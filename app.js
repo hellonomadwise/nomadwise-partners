@@ -143,7 +143,6 @@ function gate(){
   document.querySelector("header.top h1").textContent="Partner portal";
   $("main").innerHTML=`<section class="panel gate"><h2>Welcome to Nomadwise Partners</h2>
     <p><b>Already a partner?</b> Open the private link provided to you.</p>
-    <p><b>Interested in partnering?</b> Write to us at <a href="mailto:hello@nomadwise.io" style="color:var(--accent)">hello@nomadwise.io</a></p>
     <div class="acts" style="margin-top:4px"><button class="btn small ghost" id="g-in">Team sign in</button></div></section>`;
   $("grid").style.gridTemplateColumns="minmax(0,1fr)";
   $("g-in").addEventListener("click",signIn);
