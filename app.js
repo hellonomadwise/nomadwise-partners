@@ -25,7 +25,7 @@ const REGION_ORDER=["Europe","Asia","Caucasus & Central Asia","Middle East","Afr
 // ---------- state ----------
 let ROLE=null;           // "team" | "provider"
 let ME=null;             // provider name, or the team member's email
-let SESSION=null; let ACCESS=[]; let MYNAME="";
+let SESSION=null; let ACCESS=[]; let MYNAME=""; let ACT_EV=[]; let PREVIEW=false; let SALES_FROM=null;
 let S={tiers:[],setPrices:{},packages:{},contracts:{},firstRefusal:{articles:[]},discTiers:[],review:0,discMin:0,discPct:0};
 let ARTS=[], TOTALS=null, PROVIDERS=[], TEAM=[], REMS={}, offers=[];
 const regionOf={};
@@ -37,11 +37,49 @@ const propOpt=new Set(); let propAccepted=false, propConfirm=false;
 let filt={q:"",tier:"",avail:false,regions:new Set()};
 const drafts={};
 
+// ---------- partner activity (partners only; admins and previews are never tracked) ----------
+function track(kind,detail){
+  if(ROLE!=="provider"||!SESSION||PREVIEW)return;
+  sb.rpc("partners_track",{p_session:SESSION,p_kind:kind,p_detail:detail||{}}).then(()=>{},()=>{});
+}
+let visStart=Date.now();
+function flushTime(){
+  if(ROLE!=="provider"||!SESSION||PREVIEW)return;
+  const secs=Math.round((Date.now()-visStart)/1000);visStart=Date.now();
+  if(secs<3||secs>4*3600)return;
+  try{fetch(SB_URL+"/rest/v1/rpc/partners_track",{method:"POST",keepalive:true,headers:{"apikey":SB_KEY,"Content-Type":"application/json"},body:JSON.stringify({p_session:SESSION,p_kind:"time_on_page",p_detail:{seconds:secs}})})}catch(e){}
+}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushTime();else visStart=Date.now()});
+window.addEventListener("pagehide",flushTime);
+let searchT;
+const lastGuard={};
+function guardHit(kind,detail){const now=Date.now();if(lastGuard[kind]&&now-lastGuard[kind]<20000)return;lastGuard[kind]=now;track(kind,detail||{})}
+function lockPage(){
+  document.body.classList.add("locked");
+  const typing=t=>t&&t.closest&&t.closest("input,textarea,select");
+  document.addEventListener("copy",e=>{if(typing(e.target))return;e.preventDefault();guardHit("copy_attempt")});
+  document.addEventListener("cut",e=>{if(typing(e.target))return;e.preventDefault();guardHit("copy_attempt")});
+  document.addEventListener("selectstart",e=>{if(typing(e.target))return;e.preventDefault();guardHit("select_attempt")});
+  document.addEventListener("dragstart",e=>{e.preventDefault();guardHit("select_attempt")});
+  document.addEventListener("contextmenu",e=>{if(typing(e.target))return;e.preventDefault();guardHit("right_click")});
+  window.addEventListener("beforeprint",()=>guardHit("print_attempt"));
+  document.addEventListener("keydown",e=>{
+    if(!(e.ctrlKey||e.metaKey))return;const k=(e.key||"").toLowerCase();
+    if(k==="a"&&!typing(e.target)){e.preventDefault();guardHit("select_attempt",{keys:"select all"})}
+    else if(k==="c"&&!typing(e.target)){e.preventDefault();guardHit("copy_attempt",{keys:"copy"})}
+    else if(k==="p"){e.preventDefault();guardHit("print_attempt",{keys:"print"})}
+    else if(k==="s"){e.preventDefault();guardHit("save_attempt",{keys:"save page"})}
+    else if(k==="u"){e.preventDefault();guardHit("source_attempt",{keys:"view source"})}
+  });
+}
+
 function toast(msg){const t=$("toast");t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>{t.hidden=true},3200)}
 
 // ---------- prices ----------
 const byMin=()=>S.tiers.slice().sort((x,y)=>y.min-x.min);
-const tierOf=a=>a.grp!==undefined?(S.tiers.find(t=>t.name===a.grp)||{name:a.grp,p1:a.p1,p2:a.p2}):(byMin().find(t=>a.clicks>=t.min)||S.tiers[S.tiers.length-1]);
+const autoTier=a=>byMin().find(t=>a.clicks>=t.min)||S.tiers[S.tiers.length-1];
+const manualTier=a=>S.groups&&S.groups[a.name]?S.tiers.find(t=>t.name===S.groups[a.name]):null;
+const tierOf=a=>a.grp!==undefined?(S.tiers.find(t=>t.name===a.grp)||{name:a.grp,p1:a.p1,p2:a.p2}):(manualTier(a)||autoTier(a));
 const grp=a=>{const o=S.setPrices[a.name];const name=a.grp!==undefined?a.grp:(o&&o.label?o.label:tierOf(a).name);const i=S.tiers.findIndex(t=>t.name===name);return {name,rank:i<0?-1:i}};
 const priceOf=(a,pos)=>{if(a.grp!==undefined)return +(pos===1?a.p1:a.p2);const o=S.setPrices[a.name];if(o&&o["p"+pos]!=null)return +o["p"+pos];const t=tierOf(a);return pos===1?+t.p1:+t.p2};
 
@@ -110,24 +148,45 @@ async function load(){
     mode="team"; asProv=(PROVIDERS.find(p=>S.contracts[p.name])||PROVIDERS[0]||{name:"__new"}).name;
     return render();
   }
+  showPartner(data);
+}
+function showPartner(data){
+  MYNAME=data.name||"";
   ROLE="provider"; ME=data.provider; mode="prov"; asProv=ME;
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   ARTS=(data.articles||[]).map(a=>({name:a.name,region:a.region,grp:a.grp,p1:+a.p1,p2:+a.p2,slots:a.slots.map(s=>({pos:s.pos,prov:s.prov||"",exp:s.exp||"",flag:s.flag||""}))}));
-  TOTALS=data.totals; setRegions();
+  TOTALS=data.totals; setRegions(); visStart=Date.now();
   const lo=data.lastOffer;
   if(lo&&lo.kind==="proposal"&&(lo.status==="new"||lo.status==="accepted")){
     propAccepted=true;(lo.items||[]).forEach(it=>{const m=/^(.*) 1st$/.exec(it);if(m)propOpt.add(m[1])});
   }else if(lo&&lo.status==="new"){
     submitted={offer:+lo.offer,when:lo.created_at,items:lo.items||[]};
   }
+  $("switch").innerHTML="";
   $("topbar").innerHTML=`<span>Signed in as ${esc(MYNAME||data.me)}${MYNAME?` · ${esc(data.me)}`:""}</span><button id="out">Sign out</button>`;
-  $("out").addEventListener("click",signOut);
+  $("out").addEventListener("click",PREVIEW?exitPreview:signOut);
+  if(!PREVIEW)lockPage();
   render();
+  track("visit",{});
 }
+// Admin: open exactly the page a partner gets (built by the database, same as theirs)
+async function startPreview(company){
+  const {data,error}=await sb.rpc("partners_team_preview",{p_session:SESSION,p_provider:company==="__new"?"":company});
+  if(error||!data){toast("Couldn't open the preview: "+(error?error.message:"no data"));return}
+  PREVIEW=true;resetSel();window.scrollTo({top:0});
+  if(company==="__new"){data.provider="";data.name=null}
+  showPartner(data);
+  if(company==="__new"){ME="__new";asProv="__new";render()}
+  const bar=document.createElement("div");bar.className="pvbar";bar.id="pvbar";
+  bar.innerHTML=`<span>${company==="__new"?"Previewing what a new partner sees":"Previewing exactly what "+esc(data.name||company)+(data.name?" at "+esc(company):"")+" sees"}. Nothing here is sent or recorded.</span><button id="pv-exit">Exit preview</button>`;
+  document.body.appendChild(bar);$("pv-exit").addEventListener("click",exitPreview);
+}
+function exitPreview(){location.reload()}
 function applyTeamData(data){
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
-  ARTS=(data.articles||[]).map(r=>({name:r.name,region:r.region,views:r.views,clicks:r.clicks,slots:[{pos:1,prov:r.p1_prov||"",exp:r.p1_exp||"",flag:r.p1_flag||""},{pos:2,prov:r.p2_prov||"",exp:r.p2_exp||"",flag:r.p2_flag||""}]}));
-  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{};
+  SALES_FROM=data.salesFrom||null;
+  ARTS=(data.articles||[]).map(r=>({name:r.name,region:r.region,views:r.views,clicks:r.clicks,sales:r.sales||null,slots:[{pos:1,prov:r.p1_prov||"",exp:r.p1_exp||"",flag:r.p1_flag||""},{pos:2,prov:r.p2_prov||"",exp:r.p2_exp||"",flag:r.p2_flag||""}]}));
+  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=data.activity||[];
   offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailsOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
   setRegions();
 }
@@ -231,14 +290,11 @@ function render(){
   if(ROLE==="team"){
     $("topbar").innerHTML=`<span>Signed in as ${esc(MYNAME||ME)}${MYNAME?` · ${esc(ME)}`:""}</span><button id="out">Sign out</button>`;
     $("out").addEventListener("click",signOut);
-    const opts=PROVIDERS.map(p=>p.name).concat("__new");
-    $("switch").innerHTML=`<div class="switch" role="group" aria-label="View switch"><span class="eyebrow">View</span>
-      <div class="seg"><button id="v-team" aria-pressed="${mode==="team"}">Admin view</button><button id="v-prov" aria-pressed="${mode!=="team"}">See a provider's page</button></div>
-      <select id="as-prov" aria-label="Preview as provider" ${mode==="team"?"disabled":""}>${opts.map(n=>`<option value="${esc(n)}" ${n===asProv?"selected":""}>${n==="__new"?"as a new provider":"as "+esc(n)}</option>`).join("")}</select>
-      <span class="muted">${mode==="team"?"Only admins see this view.":"Preview only. This is what their private link shows."}</span></div>`;
-    $("v-team").addEventListener("click",()=>{mode="team";render()});
-    $("v-prov").addEventListener("click",()=>{mode="prov";resetSel();render()});
-    $("as-prov").addEventListener("change",e=>{asProv=e.target.value;resetSel();render()});
+    const opts=PROVIDERS.map(p=>{const c=ACCESS.find(x=>x.provider===p.name);return [p.name,esc(p.name)+(c&&c.name?" · "+esc(c.name):" · no contact yet")]}).concat([["__new","A new partner (no placements)"]]);
+    $("switch").innerHTML=`<div class="switch" role="group" aria-label="Preview a partner's page"><span class="eyebrow">See exactly what a partner sees</span>
+      <select id="as-prov" aria-label="Partner to preview">${opts.map(([v,l])=>`<option value="${esc(v)}">${l}</option>`).join("")}</select>
+      <button class="btn small" id="pv-open">Open their page</button></div>`;
+    $("pv-open").addEventListener("click",()=>startPreview($("as-prov").value));
   }
   const who=ROLE==="provider"&&MYNAME?"<b>"+esc(firstOf(MYNAME))+"</b> at <b>"+esc(v)+"</b>":"<b>"+esc(v)+"</b>";
   $("forwho").innerHTML=v===null?"<b>Admin view</b> · visible only to Nomadwise":(v==="__new"?"Prepared for <b>a new partner</b>":"Prepared for "+who);
@@ -258,6 +314,82 @@ function render(){
   mbar();
 }
 function resetSel(){sel.clear();reviews=0;submitted=null;propOpt.clear();propAccepted=false;propConfirm=false}
+
+// ---------- partner activity (admin) ----------
+const mins=s=>s<60?s+" sec":(s<3600?Math.round(s/60)+" min":(s/3600).toFixed(1)+" h");
+const ago=d=>{const s=(Date.now()-d)/1000;if(s<90)return "just now";if(s<3600)return Math.round(s/60)+" min ago";if(s<86400)return Math.round(s/3600)+" h ago";const n=Math.round(s/86400);return n===1?"yesterday":n+" days ago"};
+function evText(e){const d=e.detail||{};switch(e.kind){
+  case "visit":return "opened their page";
+  case "slot_add":return (d.renewal?"ticked to renew ":"added ")+"<b>"+esc(d.item)+"</b>"+(d.price!=null?" ("+eur(d.price)+")":"");
+  case "slot_remove":return "removed "+esc(d.item);
+  case "filter_region":return "looked at <b>"+esc(d.region)+"</b>";
+  case "filter_tier":return "filtered to "+esc(d.tier);
+  case "search":return "searched “"+esc(d.q)+"”";
+  case "filter_available":return "showed only what they can pick";
+  case "review_change":return "set review articles to "+esc(d.count);
+  case "offer_sent":return "<b>sent an offer</b>: "+eur(d.offer)+" for "+esc(d.items)+" items";
+  case "proposal_option":return (d.on?"ticked ":"unticked ")+"<b>"+esc(d.country)+"</b> in the 2027 proposal";
+  case "proposal_accepted":return "<b>accepted the 2027 proposal</b> at "+eur(d.monthly)+" a month";
+  case "renew_all":return "ticked renew all ("+esc(d.count)+")";
+  case "view_later_placements":return "looked at their 2027 placements";
+  case "time_on_page":return "spent "+mins(d.seconds)+" on the page";
+  case "copy_attempt":return '<span class="pill due">tried to copy</span>'+(d.keys?" (keyboard)":"");
+  case "select_attempt":return '<span class="pill due">tried to select text</span>'+(d.keys?" (select all)":"");
+  case "right_click":return '<span class="pill due">tried to right-click</span>';
+  case "print_attempt":return '<span class="pill due">tried to print</span>';
+  case "save_attempt":return '<span class="pill due">tried to save the page</span>';
+  case "source_attempt":return '<span class="pill due">tried to view the page source</span>';
+  default:return esc(e.kind)}}
+function activityPanel(){
+  const ev=ACT_EV.map(e=>Object.assign({},e,{t:new Date(e.at)})).sort((x,y)=>y.t-x.t);
+  const since=new Date(Date.now()-30*864e5);
+  const who=em=>{const x=ACCESS.find(a=>a.email===em);return x&&x.name?x.name:em};
+  const by={};
+  ev.slice().reverse().forEach(e=>{const p=by[e.email]=by[e.email]||{email:e.email,provider:e.provider,visits:0,secs:0,last:null,added:new Map(),removed:new Set(),regions:{},searches:new Set(),offers:0,flags:{}};
+    if(!p.last||e.t>p.last)p.last=e.t;
+    if(e.t<since)return;
+    const d=e.detail||{};
+    if(e.kind==="visit")p.visits++;
+    if(e.kind==="time_on_page")p.secs+=+d.seconds||0;
+    if(e.kind==="slot_add")p.added.set(d.item,d);
+    if(e.kind==="slot_remove")p.added.delete(d.item);
+    if(e.kind==="proposal_option"){const it=d.country+" · 1st (2027 proposal)";if(d.on)p.added.set(it,d);else p.added.delete(it)}
+    if(e.kind==="offer_sent")p.added.clear();
+    if(e.kind==="filter_region")p.regions[d.region]=(p.regions[d.region]||0)+1;
+    if(e.kind==="search")p.searches.add(d.q);
+    if(/_attempt$|^right_click$/.test(e.kind))p.flags[e.kind]=(p.flags[e.kind]||0)+1;
+    if(e.kind==="offer_sent"||e.kind==="proposal_accepted")p.offers++;
+  });
+  const people=Object.values(by).sort((x,y)=>y.last-x.last);
+  const recent=people.filter(p=>p.last>=since);
+  const tot={visits:0,secs:0,added:0,offers:0};recent.forEach(p=>{tot.visits+=p.visits;tot.secs+=p.secs;tot.added+=p.added.size;tot.offers+=p.offers});
+  const interest={};recent.forEach(p=>p.added.forEach((d,item)=>{(interest[item]=interest[item]||[]).push(p)}));
+  const topI=Object.entries(interest).sort((x,y)=>y[1].length-x[1].length).slice(0,12);
+  const notYet=ACCESS.filter(x=>x.provider&&!by[x.email]);
+  const feed=ev.filter(e=>e.kind!=="time_on_page").slice(0,40);
+  const kp=`<div class="kpis"><div class="kpi"><div class="v">${recent.length}</div><div class="l">Partners active, last 30 days</div></div>
+    <div class="kpi"><div class="v">${tot.visits}</div><div class="l">Page visits</div></div>
+    <div class="kpi"><div class="v">${mins(tot.secs)}</div><div class="l">Time on their pages</div></div>
+    <div class="kpi"><div class="v">${tot.added}</div><div class="l">Slots in selections, not sent</div></div>
+    <div class="kpi"><div class="v">${tot.offers}</div><div class="l">Offers sent</div></div></div>`;
+  const cards=people.map(p=>{const unsent=[...p.added.keys()];
+    const regs=Object.entries(p.regions).sort((a,b)=>b[1]-a[1]).map(r=>r[0]);
+    return `<div class="qi"><div class="h"><span><b>${esc(who(p.email))}</b> <span class="muted">· ${esc(p.provider)}</span></span><span class="muted" style="font-size:.84rem">Last seen ${ago(p.last)}</span></div>
+      ${Object.keys(p.flags).length?`<div><span class="pill due">Tried to take content: ${Object.entries(p.flags).map(([k,n])=>({copy_attempt:"copy",select_attempt:"select",right_click:"right-click",print_attempt:"print",save_attempt:"save",source_attempt:"view source"}[k]||k)+" ×"+n).join(", ")}</span></div>`:""}
+      <div class="facts"><div><span class="eyebrow">Last 30 days</span><span>${p.visits} ${p.visits===1?"visit":"visits"} · ${mins(p.secs)}${p.offers?" · <b>"+p.offers+" offer"+(p.offers>1?"s":"")+"</b>":""}</span></div>
+      ${regs.length?`<div><span class="eyebrow">Regions looked at</span><span>${regs.map(esc).join(", ")}</span></div>`:""}
+      ${p.searches.size?`<div><span class="eyebrow">Searched</span><span>${[...p.searches].slice(0,6).map(s=>"“"+esc(s)+"”").join(", ")}</span></div>`:""}</div>
+      ${unsent.length?`<div><span class="eyebrow">In their selection, not sent yet</span><div class="chips" style="margin-top:6px">${unsent.map(i=>`<span class="chip">${esc(i)}</span>`).join("")}</div></div>`:""}</div>`}).join("");
+  return `<section class="panel internal"><div class="phead"><h2 class="dup">Partner activity<span class="tag-internal">Admin only</span></h2><span class="muted">Last 30 days · admins are never counted</span></div>
+    ${kp}
+    <h3>By partner</h3>
+    <div class="queue">${cards||'<p class="muted" style="font-size:.9rem">No partner has signed in yet. Activity shows here from their first visit.</p>'}</div>
+    ${notYet.length?`<p class="note">Not visited yet: ${notYet.map(x=>esc(x.name||x.email)+" ("+esc(x.provider)+")").join(", ")}</p>`:""}
+    ${topI.length?`<h3>Most wanted slots, not sent yet</h3><div class="scroll"><table class="tbl"><thead><tr><th>Slot</th><th>Added by</th></tr></thead><tbody>${topI.map(([i,ps])=>`<tr><td>${esc(i)}</td><td>${ps.map(p=>esc(who(p.email))+" <span class='muted'>("+esc(p.provider)+")</span>").join(", ")}</td></tr>`).join("")}</tbody></table></div>`:""}
+    ${feed.length?`<h3>Recent activity</h3><div class="cur">${feed.map(e=>`<div class="ci" style="grid-template-columns:auto minmax(0,1fr)"><span class="muted mono" style="font-size:.78rem;white-space:nowrap">${fmtDT(e.at)}</span><span><b>${esc(who(e.email))}</b> <span class="muted">(${esc(e.provider)})</span> ${evText(e)}</span></div>`).join("")}</div>`:""}
+  </section>`;
+}
+function activityTitle(){const wk=ACT_EV.filter(e=>e.kind==="visit"&&new Date(e.at)>new Date(Date.now()-7*864e5)).length;return "Partner activity"+(wk?` <span class="muted" style="font-weight:500;font-size:.9rem">· ${wk} ${wk===1?"visit":"visits"} this week</span>`:"")}
 
 function teamPanels(){
   let paid=0,inRen=0,res=0,open=0,total=0;
@@ -339,7 +471,7 @@ function teamPanels(){
     ${order.filter(n=>cg[n]).map(n=>`<tr><td><b>${esc(n)}</b></td><td class="mono">${cnt[n]}</td><td class="mono">${eur(cg[n][1])}</td><td class="mono">${eur(cg[n][2])}</td><td class="mono">${eur(cg[n][1]+cg[n][2])}</td></tr>`).join("")}
     <tr><td><b>Open now</b></td><td></td><td class="mono">${eur(openT[1])}</td><td class="mono">${eur(openT[2])}</td><td class="mono">${eur(openT[1]+openT[2])}</td></tr></tbody></table></div>
     <p class="note">Contract deals are priced separately, so actual revenue on those slots differs from list.</p></section>`;
-  return `<p class="note" style="margin-top:-8px">Two things need us: offers and renewals. Everything else is folded away below.</p>`+inbox+ren+fold("d-how","How this works",how)+fold("d-num","Inventory and capacity",kpi+cap)+fold("d-pr","Prices and rules",prices)+fold("d-acc","Who has access",acc);
+  return `<p class="note" style="margin-top:-8px">Two things need us: offers and renewals. Everything else is folded away below.</p>`+inbox+ren+fold("d-act",activityTitle(),activityPanel())+fold("d-how","How this works",how)+fold("d-num","Inventory and capacity",kpi+cap)+fold("d-pr","Prices and rules",prices)+fold("d-acc","Who has access",acc);
 }
 
 function currentPanel(v){
@@ -352,7 +484,7 @@ function currentPanel(v){
   const other=c?mine.filter(m=>!m.st.fr&&m.s.exp!==c.contractEnd):[];
   if(c){
     const ex=contract.filter(m=>(c.exclusive||[]).includes(m.a.name)),nx=contract.filter(m=>!(c.exclusive||[]).includes(m.a.name));
-    const accept=propAccepted?`<div class="done"><b>Proposal accepted.</b> €${ptot(c)} a month${propOpt.size?", including "+[...propOpt].join(", "):""}. We'll send the agreement to confirm.${ROLE==="team"?' <span class="muted">Preview only, nothing was sent.</span>':""}</div>`
+    const accept=propAccepted?`<div class="done"><b>Proposal accepted.</b> €${ptot(c)} a month${propOpt.size?", including "+[...propOpt].join(", "):""}. We'll send the agreement to confirm.${PREVIEW?' <span class="muted">Preview only, nothing was sent.</span>':""}</div>`
       :(propConfirm?`<div class="step"><b>Accept the 2027 proposal at €${ptot(c)} a month?</b><p class="note">${propOpt.size?"Including "+[...propOpt].join(", ")+". ":"Core renewal only, no optional countries. "}We'll confirm by email and send the agreement.</p><div class="acts"><button class="btn primary" id="prop-yes" ${sending?"disabled":""}>Yes, accept</button><button class="btn ghost" id="prop-back">Back</button></div></div>`
       :`<div class="acts"><button class="btn primary" id="prop-ok">Accept this proposal</button></div><p class="note">Questions or changes? Just reply to our email.</p>`);
     return `<section class="panel"><div class="phead"><h2>${esc(c.title)}</h2><span class="muted">${contract.length} contract articles</span></div>
@@ -379,6 +511,7 @@ function currentPanel(v){
     ${later.length?`<details id="later" ${laterOpen?"open":""}><summary style="cursor:pointer;font-weight:600">Running into ${later[0].st.exp.getFullYear()} · ${later.length} placements, ends ${fmtM(later[0].st.exp)} to ${fmtM(later[later.length-1].st.exp)}</summary><div class="cur" style="margin-top:8px">${later.map(item).join("")}</div></details>`:""}</section>`;
 }
 
+const salesBit=(label,n,v,c,brands)=>`<span title="${esc((brands||[]).map(x=>x.b+": "+x.n+" sales, "+eur(x.v)).join("\n")+(c!=null?"\nOur commission: "+eur(c):""))}">${label} ${n||0} (${eur(v||0)})</span>`;
 function inventoryPanel(v){
   const team=v===null;
   const list=ARTS.filter(a=>{
@@ -392,7 +525,7 @@ function inventoryPanel(v){
   const tiers=`<div class="tiers">${S.tiers.map(t=>`<div class="tier"><span class="n">${esc(t.name)}</span><span class="r">${esc(t.desc)}</span><div class="pp"><span class="pc"><span class="pl">1st</span><span class="pv">${eur(t.p1)}</span></span><span class="pc"><span class="pl">2nd</span><span class="pv">${eur(t.p2)}</span></span></div></div>`).join("")}</div>`;
   const regs=REGION_ORDER.filter(r=>ARTS.some(a=>regionOf[a.name]===r));
   return `<section class="panel"><div class="phead"><h2>${team?"All placements":"Available placements"}</h2><span class="muted">12-month term · prices per year</span></div>
-    ${team?`<p class="note">Views and clicks to eSIM providers over the last 12 months, measured on nomadwise.io. Click rate is clicks per page view. Admin only: providers see the tier, not these figures.</p>`:""}
+    ${team?`<p class="note">Views and clicks to eSIM providers over the last 12 months, measured on nomadwise.io. Click rate is clicks per page view. Sales are the last 12 months${SALES_FROM?" (from "+fmtD(new Date(SALES_FROM+"T00:00:00"))+")":""} from the sales feed: the number of sales and, in brackets, what customers paid the brand. Each brand counts towards the position it held: the current holder, or a brand that held 1st or 2nd earlier in the year (from the July positioning sheet and the May and August swaps). 3rd is the brand mentioned further down. “Not placed” is a brand we have no record of in 1st or 2nd on that article. Hover a figure to see the brands and our commission. Admin only: providers see the tier, not these figures.</p>`:""}
     ${tiers}
     <div class="legend"><span><i class="dot" style="background:var(--accent)"></i>Available</span><span><i class="dot" style="background:var(--mine)"></i>Yours</span><span><i class="dot" style="background:var(--amber)"></i>Reserved</span><span><i class="dot" style="background:var(--taken)"></i>Unavailable</span></div>
     <div class="regs" role="group" aria-label="Filter by region"><button class="reg" data-reg="" aria-pressed="${!filt.regions.size}">All regions</button>${regs.map(r=>`<button class="reg" data-reg="${esc(r)}" aria-pressed="${filt.regions.has(r)}">${esc(r)} <span class="mono">${ARTS.filter(a=>regionOf[a.name]===r).length}</span></button>`).join("")}</div>
@@ -400,7 +533,7 @@ function inventoryPanel(v){
       <select id="f-tier" aria-label="Tier"><option value="">All tiers</option>${["Top page"].concat(S.tiers.map(t=>t.name)).map(n=>`<option ${filt.tier===n?"selected":""}>${esc(n)}</option>`).join("")}</select>
       ${team?"":`<label class="chk"><input type="checkbox" id="f-avail" ${filt.avail?"checked":""}> Only what I can pick</label>`}</div>
     <div class="rows">${list.map(a=>{const t=tierOf(a);const g=grp(a).name;const head=g!==lastG?`<div class="ghead"><span>${esc(g)}</span><span class="muted mono">${list.filter(x=>grp(x).name===g).length}</span></div>`:"";lastG=g;
-      return head+`<div class="row"><div class="art"><span class="nm">${esc(a.name)}</span><span class="meta"><span class="tchip ${(S.setPrices||{})[a.name]?"Premium":esc(t.name)}">${esc(g)}</span>${team?`<span class="mono">${a.views.toLocaleString("en-GB")} views</span><span class="mono">${a.clicks.toLocaleString("en-GB")} clicks</span>${a.views>=50?`<span class="mono">${Math.round(a.clicks/a.views*100)}% click rate</span>`:""}`:""}</span></div>
+      return head+`<div class="row"><div class="art"><span class="nm">${esc(a.name)}</span><span class="meta">${team&&!(S.setPrices||{})[a.name]?`<select class="gsel${manualTier(a)?" manual":""}" data-grp="${esc(a.name)}" aria-label="Group for ${esc(a.name)}" title="Move this article to another group. Its prices follow."><option value="">Auto · ${esc(autoTier(a).name)}</option>${S.tiers.map(x=>`<option value="${esc(x.name)}" ${manualTier(a)&&manualTier(a).name===x.name?"selected":""}>${esc(x.name)} · set by hand</option>`).join("")}</select>`:`<span class="tchip ${(S.setPrices||{})[a.name]?"Premium":esc(t.name)}">${esc(g)}</span>`}${team?`<span class="mono">${a.views.toLocaleString("en-GB")} views</span><span class="mono">${a.clicks.toLocaleString("en-GB")} clicks</span>${a.views>=50?`<span class="mono">${Math.round(a.clicks/a.views*100)}% click rate</span>`:""}${a.sales&&(a.sales.s1||a.sales.s2||a.sales.s3||a.sales.so)?`<span class="mono sales">Sales: ${salesBit("1st",a.sales.s1,a.sales.v1,a.sales.c1,a.sales.b1)} · ${salesBit("2nd",a.sales.s2,a.sales.v2,a.sales.c2,a.sales.b2)}${a.sales.s3?" · "+salesBit("3rd",a.sales.s3,a.sales.v3,a.sales.c3,a.sales.b3):""}${a.sales.so?" · "+salesBit("not placed",a.sales.so,a.sales.vo,a.sales.co,a.sales.bo):""}</span>`:""}`:""}</span></div>
       <div class="seats">${a.slots.map(s=>seat(a,s,v,team)).join("")}</div></div>`}).join("")||'<p class="muted">No articles match.</p>'}</div></section>`;
 }
 
@@ -438,10 +571,10 @@ function totals(){
 
 function railPanel(v){
   if(v===null) return `<section class="panel internal"><h3>Admin view<span class="tag-internal">Admin only</span></h3>
-    <p class="muted" style="font-size:.9rem">Provider names and contract notes show in purple under each slot. Use “See a provider's page” at the top to check exactly what a provider sees.</p></section>`;
+    <p class="muted" style="font-size:.9rem">Provider names and contract notes show in purple under each slot. To check exactly what a partner sees, pick them at the top and press Open their page.</p></section>`;
   const T=totals();
   if(submitted) return `<section class="panel" id="selp"><h2>Your offer</h2><div class="done"><b>Offer sent to Nomadwise${submitted.when?" on "+fmtD(new Date(submitted.when)):""}.</b><br>${submitted.items.length} ${submitted.items.length===1?"item":"items"}, offer ${eur(submitted.offer)}. We'll reply within 2 working days. You can send a new offer once we've answered this one.</div>
-    ${ROLE==="team"?`<p class="note">Preview only. Nothing was sent.</p><button class="btn small" id="reset">Reset preview</button>`:""}</section>`;
+    ${PREVIEW?`<p class="note">Preview only. Nothing was sent.</p><button class="btn small" id="reset">Reset preview</button>`:""}</section>`;
   const items=[...sel.entries()];
   return `<section class="panel" id="selp"><div class="phead"><h2>Your selection</h2><span class="muted">${T.slots} placements</span></div>
     ${items.length||reviews?`<div class="sel-list">${items.map(([k,x])=>`<div class="sel-item"><span>${esc(k)}${x.kind==="renew"?' <span class="muted">renewal</span>':""}</span><span class="mono">${eur(x.price)}</span><button class="x" data-rm="${esc(k)}" aria-label="Remove ${esc(k)}">×</button></div>`).join("")}
@@ -465,22 +598,23 @@ function mbar(){
 }
 
 function toggle(k){
-  if(sel.has(k)){sel.delete(k);return}
+  if(sel.has(k)){const x=sel.get(k);sel.delete(k);track("slot_remove",{item:k,price:x.price,renewal:x.kind==="renew"});return}
   const [name,p]=k.split(" · ");const a=ARTS.find(x=>x.name===name);const pos=p==="1st"?1:2;
   const st=status(a,a.slots[pos-1],viewer());
   sel.set(k,{price:priceOf(a,pos),kind:st.k==="mine"?"renew":"new",tier:grp(a).name});
+  track("slot_add",{item:k,price:priceOf(a,pos),tier:grp(a).name,renewal:st.k==="mine"});
 }
 
 // ---------- saving ----------
 let saveT;
-function saveSettings(){
+function saveSettings(msg){
   clearTimeout(saveT);
   saveT=setTimeout(async()=>{const s=Object.assign({},S);delete s.contracts;
     const {error}=await sb.rpc("partners_team_save_settings",{p_session:SESSION,p_s:s});
-    toast(error?"Couldn't save. Check your connection and try again.":"Saved. Provider pages now show the new prices.")},500);
+    toast(error?"Couldn't save. Check your connection and try again.":(msg||"Saved. Provider pages now show the new prices."))},500);
 }
 async function submitOffer(items,list,amt,note,kind){
-  if(ROLE!=="provider"){ // team preview: never sent
+  if(ROLE!=="provider"||PREVIEW){ // previews never send anything
     offers.unshift({preview:true,from:asProv==="__new"?"New partner":asProv,email:"",when:"Just now",items,list,offer:amt,note,status:"new",kind,sent:false});
     return true;
   }
@@ -496,30 +630,35 @@ function bind(){
     el.addEventListener(el.type==="checkbox"?"change":"click",()=>{toggle(el.dataset.k);render()});
   });
   document.querySelectorAll("[data-rm]").forEach(el=>el.addEventListener("click",()=>{sel.delete(el.dataset.rm);render()}));
-  const q=$("f-q");if(q)q.addEventListener("input",()=>{filt.q=q.value;const pos=q.selectionStart;render();const n=$("f-q");n.focus();n.setSelectionRange(pos,pos)});
-  const ft=$("f-tier");if(ft)ft.addEventListener("change",()=>{filt.tier=ft.value;render()});
-  document.querySelectorAll("[data-reg]").forEach(el=>el.addEventListener("click",()=>{const r=el.dataset.reg;if(r==="")filt.regions.clear();else if(filt.regions.has(r))filt.regions.delete(r);else filt.regions.add(r);render()}));
-  const fa=$("f-avail");if(fa)fa.addEventListener("change",()=>{filt.avail=fa.checked;render()});
+  const q=$("f-q");if(q)q.addEventListener("input",()=>{filt.q=q.value;clearTimeout(searchT);const sq=q.value.trim();if(sq.length>=3)searchT=setTimeout(()=>track("search",{q:sq}),1500);const pos=q.selectionStart;render();const n=$("f-q");n.focus();n.setSelectionRange(pos,pos)});
+  const ft=$("f-tier");if(ft)ft.addEventListener("change",()=>{filt.tier=ft.value;if(ft.value)track("filter_tier",{tier:ft.value});render()});
+  document.querySelectorAll("[data-reg]").forEach(el=>el.addEventListener("click",()=>{const r=el.dataset.reg;if(r==="")filt.regions.clear();else if(filt.regions.has(r))filt.regions.delete(r);else{filt.regions.add(r);track("filter_region",{region:r})}render()}));
+  const fa=$("f-avail");if(fa)fa.addEventListener("change",()=>{filt.avail=fa.checked;if(fa.checked)track("filter_available",{});render()});
   const rm=$("rv-m"),rp=$("rv-p");
-  if(rm)rm.addEventListener("click",()=>{if(!submitted&&reviews>0){reviews--;render()}});
-  if(rp)rp.addEventListener("click",()=>{if(!submitted&&viewer()!==null){reviews++;render()}});
+  if(rm)rm.addEventListener("click",()=>{if(!submitted&&reviews>0){reviews--;track("review_change",{count:reviews});render()}});
+  if(rp)rp.addEventListener("click",()=>{if(!submitted&&viewer()!==null){reviews++;track("review_change",{count:reviews});render()}});
   document.querySelectorAll("details.qi,details.fold,#d-done").forEach(d=>d.addEventListener("toggle",()=>{if(d.open)openD.add(d.id);else openD.delete(d.id)}));
-  const lt=$("later");if(lt)lt.addEventListener("toggle",()=>{laterOpen=lt.open});
+  const lt=$("later");if(lt)lt.addEventListener("toggle",()=>{laterOpen=lt.open;if(lt.open)track("view_later_placements",{})});
   const ra=$("renall");if(ra)ra.addEventListener("click",()=>{
     const v=viewer();const mine=[];ARTS.forEach(a=>a.slots.forEach(s=>{const st=status(a,s,v);if(st.k==="mine"&&renewable({st}))mine.push(key(a,s.pos))}));
-    const all=mine.every(k=>sel.has(k));mine.forEach(k=>{if(all)sel.delete(k);else if(!sel.has(k))toggle(k)});render()});
+    const all=mine.every(k=>sel.has(k));if(!all)track("renew_all",{count:mine.length});mine.forEach(k=>{if(all)sel.delete(k);else if(!sel.has(k))toggle(k)});render()});
   const of=$("offer");if(of)of.addEventListener("submit",async e=>{e.preventDefault();if(sending)return;
     const amt=+$("o-amt").value;if(!amt)return;const T=totals();const note=$("o-note").value;
     const items=[...sel.keys()].concat(reviews?["Review article × "+reviews]:[]);
-    if(await submitOffer(items,T.list+T.addons,amt,note,"offer")){submitted={offer:amt,when:new Date().toISOString(),items};render();window.scrollTo({top:0,behavior:"smooth"})}});
+    if(await submitOffer(items,T.list+T.addons,amt,note,"offer")){track("offer_sent",{offer:amt,list:T.list+T.addons,items:items.length});submitted={offer:amt,when:new Date().toISOString(),items};render();window.scrollTo({top:0,behavior:"smooth"})}});
   const rs=$("reset");if(rs)rs.addEventListener("click",()=>{resetSel();render()});
-  document.querySelectorAll("[data-poseat]").forEach(el=>el.addEventListener("click",()=>{const o=el.dataset.poseat;if(propOpt.has(o))propOpt.delete(o);else propOpt.add(o);render()}));
-  document.querySelectorAll("[data-po]").forEach(el=>el.addEventListener("change",()=>{const o=el.dataset.po;if(el.checked)propOpt.add(o);else propOpt.delete(o);render()}));
+  document.querySelectorAll("[data-poseat]").forEach(el=>el.addEventListener("click",()=>{const o=el.dataset.poseat;if(propOpt.has(o))propOpt.delete(o);else propOpt.add(o);track("proposal_option",{country:o,on:propOpt.has(o)});render()}));
+  document.querySelectorAll("[data-po]").forEach(el=>el.addEventListener("change",()=>{const o=el.dataset.po;if(el.checked)propOpt.add(o);else propOpt.delete(o);track("proposal_option",{country:o,on:el.checked});render()}));
   const pk=$("prop-ok");if(pk)pk.addEventListener("click",()=>{propConfirm=true;render()});
   const pb=$("prop-back");if(pb)pb.addEventListener("click",()=>{propConfirm=false;render()});
   const py=$("prop-yes");if(py)py.addEventListener("click",async()=>{const c=S.contracts[asProv];const m=ptot(c);
     const items=["Core renewal, €"+c.base+" a month"].concat([...propOpt].map(o=>o+" 1st"));
-    if(await submitOffer(items,m*12,m*12,"Accepted at €"+m+" a month","proposal")){propAccepted=true;propConfirm=false;render()}});
+    if(await submitOffer(items,m*12,m*12,"Accepted at €"+m+" a month","proposal")){track("proposal_accepted",{monthly:m});propAccepted=true;propConfirm=false;render()}});
+  // team: move an article to another group
+  document.querySelectorAll("[data-grp]").forEach(el=>el.addEventListener("change",()=>{const n=el.dataset.grp;S.groups=S.groups||{};
+    if(el.value)S.groups[n]=el.value;else delete S.groups[n];
+    const a=ARTS.find(x=>x.name===n);render();
+    saveSettings("Saved. "+n+(el.value?" is now "+el.value:" is back on its clicks group, "+autoTier(a).name)+": "+eur(priceOf(a,1))+" 1st, "+eur(priceOf(a,2))+" 2nd")}));
   // team: prices
   document.querySelectorAll("[data-t]").forEach(el=>el.addEventListener("change",()=>{const [i,f]=el.dataset.t.split("|");S.tiers[+i][f]=Math.max(0,+el.value||0);saveSettings();render()}));
   document.querySelectorAll("[data-sp]").forEach(el=>el.addEventListener("change",()=>{const [n,f]=el.dataset.sp.split("|");S.setPrices[n][f]=Math.max(0,+el.value||0);saveSettings();render()}));
