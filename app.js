@@ -38,16 +38,26 @@ let filt={q:"",tier:"",avail:false,regions:new Set()};
 const drafts={};
 
 // ---------- partner activity (partners only; admins and previews are never tracked) ----------
+const VISIT_ID=Math.random().toString(36).slice(2,10);
+let maxScroll=0;
+window.addEventListener("scroll",()=>{const h=document.documentElement;const p=Math.round((h.scrollTop+h.clientHeight)/h.scrollHeight*100);if(p>maxScroll)maxScroll=Math.min(100,p)},{passive:true});
+function deviceInfo(){const ua=navigator.userAgent;
+  const dev=/iPad|Tablet/i.test(ua)?"tablet":(/Mobi|Android|iPhone/i.test(ua)?"phone":"desktop");
+  const br=/Edg\//.test(ua)?"Edge":/OPR\//.test(ua)?"Opera":/Chrome\//.test(ua)?"Chrome":/Firefox\//.test(ua)?"Firefox":/Safari\//.test(ua)?"Safari":"other";
+  const os=/Windows/.test(ua)?"Windows":/Mac OS X/.test(ua)&&!/iPhone|iPad/.test(ua)?"Mac":/iPhone|iPad/.test(ua)?"iOS":/Android/.test(ua)?"Android":/Linux/.test(ua)?"Linux":"other";
+  let tz="";try{tz=Intl.DateTimeFormat().resolvedOptions().timeZone}catch(e){}
+  return {device:dev,browser:br,os,tz,w:window.innerWidth,lang:navigator.language||""}}
 function track(kind,detail){
   if(ROLE!=="provider"||!SESSION||PREVIEW)return;
-  sb.rpc("partners_track",{p_session:SESSION,p_kind:kind,p_detail:detail||{}}).then(()=>{},()=>{});
+  const d=Object.assign({},detail||{},{v:VISIT_ID});
+  sb.rpc("partners_track",{p_session:SESSION,p_kind:kind,p_detail:d}).then(()=>{},()=>{});
 }
 let visStart=Date.now();
 function flushTime(){
   if(ROLE!=="provider"||!SESSION||PREVIEW)return;
   const secs=Math.round((Date.now()-visStart)/1000);visStart=Date.now();
   if(secs<3||secs>4*3600)return;
-  try{fetch(SB_URL+"/rest/v1/rpc/partners_track",{method:"POST",keepalive:true,headers:{"apikey":SB_KEY,"Content-Type":"application/json"},body:JSON.stringify({p_session:SESSION,p_kind:"time_on_page",p_detail:{seconds:secs}})})}catch(e){}
+  try{fetch(SB_URL+"/rest/v1/rpc/partners_track",{method:"POST",keepalive:true,headers:{"apikey":SB_KEY,"Content-Type":"application/json"},body:JSON.stringify({p_session:SESSION,p_kind:"time_on_page",p_detail:{seconds:secs,scroll:maxScroll,v:VISIT_ID}})})}catch(e){}
 }
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushTime();else visStart=Date.now()});
 window.addEventListener("pagehide",flushTime);
@@ -167,7 +177,7 @@ function showPartner(data){
   $("out").addEventListener("click",PREVIEW?exitPreview:signOut);
   if(!PREVIEW)lockPage();
   render();
-  track("visit",{});
+  track("visit",deviceInfo());
 }
 // Admin: open exactly the page a partner gets (built by the database, same as theirs)
 async function startPreview(company){
@@ -296,7 +306,7 @@ function render(){
       <button class="btn small" id="pv-open">Open their page</button></div>`;
     $("pv-open").addEventListener("click",()=>startPreview($("as-prov").value));
   }
-  const who=ROLE==="provider"&&MYNAME?"<b>"+esc(firstOf(MYNAME))+"</b> at <b>"+esc(v)+"</b>":"<b>"+esc(v)+"</b>";
+  const who="<b>"+esc(v)+"</b>";
   $("forwho").innerHTML=v===null?"<b>Admin view</b> · visible only to Nomadwise":(v==="__new"?"Prepared for <b>a new partner</b>":"Prepared for "+who);
   if(ROLE==="provider"){document.querySelector("header.top h1").textContent=MYNAME?"Welcome, "+firstOf(MYNAME):"Partner placements"}
   const totalViews=TOTALS?+TOTALS.views:ARTS.reduce((t,a)=>t+a.views,0);
@@ -332,7 +342,9 @@ function evText(e){const d=e.detail||{};switch(e.kind){
   case "proposal_accepted":return "<b>accepted the 2027 proposal</b> at "+eur(d.monthly)+" a month";
   case "renew_all":return "ticked renew all ("+esc(d.count)+")";
   case "view_later_placements":return "looked at their 2027 placements";
-  case "time_on_page":return "spent "+mins(d.seconds)+" on the page";
+  case "time_on_page":return "left the page after "+mins(d.seconds)+(d.scroll?", scrolled "+d.scroll+"% of the way down":"");
+  case "tap_unavailable":return "tapped <b>"+esc(d.item)+"</b>, which shows “"+esc(d.label)+"”";
+  case "open_section":return "opened "+esc(d.section);
   case "copy_attempt":return '<span class="pill due">tried to copy</span>'+(d.keys?" (keyboard)":"");
   case "select_attempt":return '<span class="pill due">tried to select text</span>'+(d.keys?" (select all)":"");
   case "right_click":return '<span class="pill due">tried to right-click</span>';
@@ -342,10 +354,10 @@ function evText(e){const d=e.detail||{};switch(e.kind){
   default:return esc(e.kind)}}
 function activityPanel(){
   const ev=ACT_EV.map(e=>Object.assign({},e,{t:new Date(e.at)})).sort((x,y)=>y.t-x.t);
-  const since=new Date(Date.now()-30*864e5);
+  const since=new Date(Date.now()-90*864e5);
   const who=em=>{const x=ACCESS.find(a=>a.email===em);return x&&x.name?x.name:em};
   const by={};
-  ev.slice().reverse().forEach(e=>{const p=by[e.email]=by[e.email]||{email:e.email,provider:e.provider,visits:0,secs:0,last:null,added:new Map(),removed:new Set(),regions:{},searches:new Set(),offers:0,flags:{}};
+  ev.slice().reverse().forEach(e=>{const p=by[e.email]=by[e.email]||{email:e.email,provider:e.provider,visits:0,secs:0,last:null,added:new Map(),removed:new Set(),regions:{},searches:new Set(),offers:0,flags:{},taps:new Set()};
     if(!p.last||e.t>p.last)p.last=e.t;
     if(e.t<since)return;
     const d=e.detail||{};
@@ -357,6 +369,7 @@ function activityPanel(){
     if(e.kind==="offer_sent")p.added.clear();
     if(e.kind==="filter_region")p.regions[d.region]=(p.regions[d.region]||0)+1;
     if(e.kind==="search")p.searches.add(d.q);
+    if(e.kind==="tap_unavailable")p.taps.add(d.item);
     if(/_attempt$|^right_click$/.test(e.kind))p.flags[e.kind]=(p.flags[e.kind]||0)+1;
     if(e.kind==="offer_sent"||e.kind==="proposal_accepted")p.offers++;
   });
@@ -365,28 +378,37 @@ function activityPanel(){
   const tot={visits:0,secs:0,added:0,offers:0};recent.forEach(p=>{tot.visits+=p.visits;tot.secs+=p.secs;tot.added+=p.added.size;tot.offers+=p.offers});
   const interest={};recent.forEach(p=>p.added.forEach((d,item)=>{(interest[item]=interest[item]||[]).push(p)}));
   const topI=Object.entries(interest).sort((x,y)=>y[1].length-x[1].length).slice(0,12);
-  const notYet=ACCESS.filter(x=>x.provider&&!by[x.email]);
-  const feed=ev.filter(e=>e.kind!=="time_on_page").slice(0,40);
-  const kp=`<div class="kpis"><div class="kpi"><div class="v">${recent.length}</div><div class="l">Partners active, last 30 days</div></div>
-    <div class="kpi"><div class="v">${tot.visits}</div><div class="l">Page visits</div></div>
-    <div class="kpi"><div class="v">${mins(tot.secs)}</div><div class="l">Time on their pages</div></div>
-    <div class="kpi"><div class="v">${tot.added}</div><div class="l">Slots in selections, not sent</div></div>
-    <div class="kpi"><div class="v">${tot.offers}</div><div class="l">Offers sent</div></div></div>`;
-  const cards=people.map(p=>{const unsent=[...p.added.keys()];
-    const regs=Object.entries(p.regions).sort((a,b)=>b[1]-a[1]).map(r=>r[0]);
-    return `<div class="qi"><div class="h"><span><b>${esc(who(p.email))}</b> <span class="muted">· ${esc(p.provider)}</span></span><span class="muted" style="font-size:.84rem">Last seen ${ago(p.last)}</span></div>
-      ${Object.keys(p.flags).length?`<div><span class="pill due">Tried to take content: ${Object.entries(p.flags).map(([k,n])=>({copy_attempt:"copy",select_attempt:"select",right_click:"right-click",print_attempt:"print",save_attempt:"save",source_attempt:"view source"}[k]||k)+" ×"+n).join(", ")}</span></div>`:""}
-      <div class="facts"><div><span class="eyebrow">Last 30 days</span><span>${p.visits} ${p.visits===1?"visit":"visits"} · ${mins(p.secs)}${p.offers?" · <b>"+p.offers+" offer"+(p.offers>1?"s":"")+"</b>":""}</span></div>
-      ${regs.length?`<div><span class="eyebrow">Regions looked at</span><span>${regs.map(esc).join(", ")}</span></div>`:""}
-      ${p.searches.size?`<div><span class="eyebrow">Searched</span><span>${[...p.searches].slice(0,6).map(s=>"“"+esc(s)+"”").join(", ")}</span></div>`:""}</div>
-      ${unsent.length?`<div><span class="eyebrow">In their selection, not sent yet</span><div class="chips" style="margin-top:6px">${unsent.map(i=>`<span class="chip">${esc(i)}</span>`).join("")}</div></div>`:""}</div>`}).join("");
-  return `<section class="panel internal"><div class="phead"><h2 class="dup">Partner activity<span class="tag-internal">Admin only</span></h2><span class="muted">Last 30 days · admins are never counted</span></div>
-    ${kp}
-    <h3>By partner</h3>
-    <div class="queue">${cards||'<p class="muted" style="font-size:.9rem">No partner has signed in yet. Activity shows here from their first visit.</p>'}</div>
-    ${notYet.length?`<p class="note">Not visited yet: ${notYet.map(x=>esc(x.name||x.email)+" ("+esc(x.provider)+")").join(", ")}</p>`:""}
-    ${topI.length?`<h3>Most wanted slots, not sent yet</h3><div class="scroll"><table class="tbl"><thead><tr><th>Slot</th><th>Added by</th></tr></thead><tbody>${topI.map(([i,ps])=>`<tr><td>${esc(i)}</td><td>${ps.map(p=>esc(who(p.email))+" <span class='muted'>("+esc(p.provider)+")</span>").join(", ")}</td></tr>`).join("")}</tbody></table></div>`:""}
-    ${feed.length?`<h3>Recent activity</h3><div class="cur">${feed.map(e=>`<div class="ci" style="grid-template-columns:auto minmax(0,1fr)"><span class="muted mono" style="font-size:.78rem;white-space:nowrap">${fmtDT(e.at)}</span><span><b>${esc(who(e.email))}</b> <span class="muted">(${esc(e.provider)})</span> ${evText(e)}</span></div>`).join("")}</div>`:""}
+  const visitsOf=email=>{const mine=ev.filter(e=>e.email===email).slice().reverse();const out=[];let cur=null;
+    mine.forEach(e=>{const d=e.detail||{};const vid=d.v||null;
+      if(e.kind==="visit"||!cur||(vid&&cur.vid&&vid!==cur.vid)||(!vid&&e.t-cur.end>30*60000)){cur={vid,start:e.t,end:e.t,info:e.kind==="visit"?d:null,steps:[],secs:0,scroll:0};out.push(cur)}
+      cur.end=e.t;if(e.kind==="time_on_page"){cur.secs+=+d.seconds||0;cur.scroll=Math.max(cur.scroll,+d.scroll||0)}
+      if(e.kind!=="visit")cur.steps.push(e)});
+    return out.reverse()};
+  const tm=t=>String(t.getHours()).padStart(2,"0")+":"+String(t.getMinutes()).padStart(2,"0")+":"+String(t.getSeconds()).padStart(2,"0");
+  const visitHtml=v=>{const i=v.info||{};
+    return `<details class="rg"><summary><b>${fmtD(v.start)}, ${tm(v.start).slice(0,5)}</b> · ${v.secs?mins(v.secs):"under a minute"}${v.scroll?" · scrolled "+v.scroll+"%":""} · ${v.steps.filter(s=>s.kind!=="time_on_page").length} actions${i.device?` <span class="muted">· ${esc(i.device)}, ${esc(i.browser)} on ${esc(i.os)}${i.tz?", "+esc(i.tz):""}</span>`:""}</summary>
+      <div class="cur" style="margin:6px 0 4px 14px">${v.steps.length?v.steps.map(s=>`<div class="ci" style="grid-template-columns:auto minmax(0,1fr);padding:4px 0"><span class="muted mono" style="font-size:.76rem">${tm(s.t)}</span><span style="font-size:.86rem">${evText(s)}</span></div>`).join(""):'<p class="muted" style="font-size:.86rem">Opened the page and looked around without clicking anything.</p>'}</div></details>`};
+  // one line per partner (everyone with partner access, plus anyone with activity), newest first
+  ACCESS.filter(x=>x.provider&&!by[x.email]).forEach(x=>{by[x.email]={email:x.email,provider:x.provider,visits:0,secs:0,last:null,added:new Map(),regions:{},searches:new Set(),offers:0,flags:{},taps:new Set(),never:true}});
+  const all=Object.values(by).sort((x,y)=>(y.last||0)-(x.last||0));
+  const flagTxt=p=>Object.entries(p.flags).map(([k,n])=>({copy_attempt:"copy",select_attempt:"select",right_click:"right-click",print_attempt:"print",save_attempt:"save",source_attempt:"view source"}[k]||k)+" ×"+n).join(", ");
+  const line=p=>{const unsent=[...p.added.keys()];const vis=p.never?[]:visitsOf(p.email);const regs=Object.entries(p.regions).sort((a,b)=>b[1]-a[1]).map(r=>r[0]);const id="pa-"+slug(p.email);
+    const summary=p.never?'<span class="muted">Not visited yet</span>'
+      :`<span class="muted">Last seen ${ago(p.last)} · ${vis.length} ${vis.length===1?"visit":"visits"} · ${mins(vis.reduce((t,v)=>t+v.secs,0))}</span>${unsent.length?` <span class="pill soon">${unsent.length} in selection, not sent</span>`:""}${p.offers?` <span class="pill ok">${p.offers} offer${p.offers>1?"s":""} sent</span>`:""}${Object.keys(p.flags).length?` <span class="pill due">Tried to take content</span>`:""}`;
+    return `<details class="qi" id="${id}" ${openD.has(id)?"open":""}><summary class="h" style="cursor:pointer"><span><b>${esc(who(p.email))}</b> <span class="muted">· ${esc(p.provider)} · ${esc(p.email)}</span></span><span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.84rem">${summary}</span></summary>
+      ${p.never?'<p class="muted" style="font-size:.88rem">They have access but haven\'t signed in yet. Use Email sign-in link under Who has access to send them a link.</p>':`
+      ${Object.keys(p.flags).length?`<div><span class="pill due">Tried to take content: ${flagTxt(p)}</span></div>`:""}
+      <div class="facts">
+        ${regs.length?`<div><span class="eyebrow">Regions looked at</span><span>${regs.map(esc).join(", ")}</span></div>`:""}
+        ${p.searches.size?`<div><span class="eyebrow">Searched</span><span>${[...p.searches].map(s=>"“"+esc(s)+"”").join(", ")}</span></div>`:""}
+      </div>
+      ${unsent.length?`<div><span class="eyebrow">In their selection, not sent yet</span><div class="chips" style="margin-top:6px">${unsent.map(i=>`<span class="chip">${esc(i)}</span>`).join("")}</div></div>`:""}
+      ${p.taps.size?`<div><span class="eyebrow">Looked at slots held by others</span><div class="chips" style="margin-top:6px">${[...p.taps].map(i=>`<span class="chip" style="background:var(--taken-soft);color:var(--muted)">${esc(i)}</span>`).join("")}</div></div>`:""}
+      <div><span class="eyebrow">Every visit, newest first · open one to see each step</span><div class="rgs" style="margin-top:6px">${vis.map(visitHtml).join("")}</div></div>`}
+    </details>`};
+  return `<section class="panel internal"><div class="phead"><h2 class="dup">Partner activity<span class="tag-internal">Admin only</span></h2><span class="muted">Last 90 days · admins and previews are never recorded</span></div>
+    <div class="queue">${all.map(line).join("")||'<p class="muted" style="font-size:.9rem">No partners have access yet. Add them under Who has access.</p>'}</div>
+    ${topI.length?`<details class="rg" style="margin-top:6px"><summary style="cursor:pointer;font-weight:600">Slots partners have picked but not sent · ${topI.length}</summary><div class="scroll" style="margin-top:8px"><table class="tbl"><thead><tr><th>Slot</th><th>In the selection of</th></tr></thead><tbody>${topI.map(([i,ps])=>`<tr><td>${esc(i)}</td><td>${ps.map(p=>esc(who(p.email))+" <span class='muted'>("+esc(p.provider)+")</span>").join(", ")}</td></tr>`).join("")}</tbody></table></div></details>`:""}
   </section>`;
 }
 function activityTitle(){const wk=ACT_EV.filter(e=>e.kind==="visit"&&new Date(e.at)>new Date(Date.now()-7*864e5)).length;return "Partner activity"+(wk?` <span class="muted" style="font-weight:500;font-size:.9rem">· ${wk} ${wk===1?"visit":"visits"} this week</span>`:"")}
@@ -444,7 +466,7 @@ function teamPanels(){
   const prices=`<section class="panel internal"><div class="phead"><h2 class="dup">Prices and rules<span class="tag-internal">Admin only</span></h2><span class="muted">Changes save straight away and show on every provider's page</span></div>
     <div class="scroll"><table class="tbl"><thead><tr><th>Tier</th><th>Clicks a year</th><th>1st position</th><th>2nd position</th></tr></thead><tbody>
     ${S.tiers.map((t,i)=>`<tr><td><b>${esc(t.name)}</b></td><td class="muted">${esc(t.desc)}</td><td>€ <input id="t${i}p1" data-t="${i}|p1" type="number" min="0" value="${t.p1}"></td><td>€ <input id="t${i}p2" data-t="${i}|p2" type="number" min="0" value="${t.p2}"></td></tr>`).join("")}
-    ${Object.keys(S.setPrices||{}).map(n=>`<tr><td><b>${esc(n)}</b></td><td class="muted">Set price, overrides its tier</td><td>€ <input id="sp-${slug(n)}" data-sp="${esc(n)}|p1" type="number" min="0" value="${S.setPrices[n].p1}"></td><td>${S.setPrices[n].p2!=null?`€ <input id="sp2-${slug(n)}" data-sp="${esc(n)}|p2" type="number" min="0" value="${S.setPrices[n].p2}">`:'<span class="muted">Tier price</span>'}</td></tr>`).join("")}
+    ${Object.keys(S.setPrices||{}).map(n=>`<tr><td><b>${esc(n)}</b></td><td class="muted">Set price, overrides its tier</td>${[1,2].map(k=>{const v=S.setPrices[n]["p"+k];const ar=ARTS.find(x=>x.name===n);const tp=ar?(k===1?+(manualTier(ar)||autoTier(ar)).p1:+(manualTier(ar)||autoTier(ar)).p2):"";return `<td>€ <input id="sp${k===1?"":"2"}-${slug(n)}" data-sp="${esc(n)}|p${k}" type="number" min="0" value="${v!=null?v:""}" placeholder="${tp!==""?tp:""}" title="Type a price to set it. Leave empty to use the tier price"></td>`}).join("")}</tr>`).join("")}
     <tr><td><b>Review article</b></td><td class="muted">Dedicated add-on</td><td colspan="2">€ <input id="rv" data-s="review" type="number" min="0" value="${S.review}"></td></tr>
     <tr><td><b>Package discount</b></td><td class="muted">Premium and Standard only</td><td colspan="2"><input id="dm" data-s="discMin" type="number" min="1" value="${S.discMin}"> slots or more get <input id="dp" data-s="discPct" type="number" min="0" max="50" value="${S.discPct}"> % off</td></tr>
     </tbody></table></div></section>`;
@@ -490,14 +512,14 @@ function currentPanel(v){
     return `<section class="panel"><div class="phead"><h2>${esc(c.title)}</h2><span class="muted">${contract.length} contract articles</span></div>
     <p class="muted">${esc(c.term)}</p>
     <div class="cur">${(c.lines||[]).map(l=>`<div class="ci" style="grid-template-columns:minmax(0,1fr) auto"><span>${esc(l[0].replace("{n}",contract.length))}</span><span class="mono">${esc(l[1])}</span></div>`).join("")}
-      <details class="ci" style="display:block"><summary style="cursor:pointer;font-size:.88rem"><b>Exclusive 1st position · ${ex.length}</b> <span class="muted">no other eSIM can take 1st</span></summary>${chipList(ex.map(m=>m.a.name))}</details>
-      <details class="ci" style="display:block"><summary style="cursor:pointer;font-size:.88rem"><b>1st position by default, non-exclusive · ${nx.length}</b> <span class="muted">first refusal if another provider asks, at up to €300–350</span></summary>${chipList(nx.map(m=>m.a.name))}</details>
+      <details class="ci" data-sec="exclusive list" style="display:block"><summary style="cursor:pointer;font-size:.88rem"><b>Exclusive 1st position · ${ex.length}</b> <span class="muted">no other eSIM can take 1st</span></summary>${chipList(ex.map(m=>m.a.name))}</details>
+      <details class="ci" data-sec="non-exclusive list" style="display:block"><summary style="cursor:pointer;font-size:.88rem"><b>1st position by default, non-exclusive · ${nx.length}</b> <span class="muted">first refusal if another provider asks, at up to €300–350</span></summary>${chipList(nx.map(m=>m.a.name))}</details>
       ${c.banners?`<div class="ci" style="grid-template-columns:minmax(0,1fr);font-size:.88rem"><span><b>Coworking banners</b> <span class="muted">${esc(c.banners)}</span></span></div>`:""}
     <div class="ci" style="grid-template-columns:minmax(0,1fr)"><span class="eyebrow">Optional 1st positions · tick the ones you want</span></div>
     ${(c.options||[]).map(o=>`<label class="ci"><input type="checkbox" id="po-${slug(o)}" data-po="${esc(o)}" ${propOpt.has(o)?"checked":""} ${propAccepted?"disabled":""}><span>${esc(o)} 1st</span><span class="mono">+€${c.prices[o]} a month</span></label>`).join("")}
     <div class="ci" style="grid-template-columns:minmax(0,1fr) auto;font-weight:600"><span>Your total${propOpt.size?" with "+propOpt.size+" optional":""}</span><span class="mono">€${ptot(c)} a month</span></div></div>
     ${accept}
-    ${other.length?`<details style="border-top:1px solid var(--line);padding-top:10px"><summary style="cursor:pointer;font-weight:600">Also yours, outside this contract · ${other.length} placements, ending ${fmtM(other[0].st.exp)} to ${fmtM(other[other.length-1].st.exp)}</summary><div class="cur" style="margin-top:8px">${other.map(m=>`<div class="ci" style="grid-template-columns:minmax(0,1fr) auto"><span>${esc(m.a.name)} · ${m.s.pos===1?"1st":"2nd"}</span><span class="pill ok">Runs to ${fmtD(m.st.exp)}</span></div>`).join("")}</div><p class="note">Paid separately and unchanged by this proposal. They can join the contract when each one ends.</p></details>`:""}
+    ${other.length?`<details data-sec="placements outside the contract" style="border-top:1px solid var(--line);padding-top:10px"><summary style="cursor:pointer;font-weight:600">Also yours, outside this contract · ${other.length} placements, ending ${fmtM(other[0].st.exp)} to ${fmtM(other[other.length-1].st.exp)}</summary><div class="cur" style="margin-top:8px">${other.map(m=>`<div class="ci" style="grid-template-columns:minmax(0,1fr) auto"><span>${esc(m.a.name)} · ${m.s.pos===1?"1st":"2nd"}</span><span class="pill ok">Runs to ${fmtD(m.st.exp)}</span></div>`).join("")}</div><p class="note">Paid separately and unchanged by this proposal. They can join the contract when each one ends.</p></details>`:""}
     <p class="note">Your contract articles are covered by this proposal, so they don't carry separate prices below. Anything else open is yours to add.</p></section>`;
   }
   const now=mine.filter(renewable), later=mine.filter(m=>!renewable(m));
@@ -527,12 +549,12 @@ function inventoryPanel(v){
   return `<section class="panel"><div class="phead"><h2>${team?"All placements":"Available placements"}</h2><span class="muted">12-month term · prices per year</span></div>
     ${team?`<p class="note">Views and clicks to eSIM providers over the last 12 months, measured on nomadwise.io. Click rate is clicks per page view. Sales are the last 12 months${SALES_FROM?" (from "+fmtD(new Date(SALES_FROM+"T00:00:00"))+")":""} from the sales feed: the number of sales and, in brackets, what customers paid the brand. Each brand counts towards the position it held: the current holder, or a brand that held 1st or 2nd earlier in the year (from the July positioning sheet and the May and August swaps). 3rd is the brand mentioned further down. “Not placed” is a brand we have no record of in 1st or 2nd on that article. Hover a figure to see the brands and our commission. Admin only: providers see the tier, not these figures.</p>`:""}
     ${tiers}
-    <div class="legend"><span><i class="dot" style="background:var(--accent)"></i>Available</span><span><i class="dot" style="background:var(--mine)"></i>Yours</span><span><i class="dot" style="background:var(--amber)"></i>Reserved</span><span><i class="dot" style="background:var(--taken)"></i>Unavailable</span></div>
+    <div class="legend"><span><i class="dot" style="background:var(--accent)"></i>Available</span><span><i class="dot" style="background:var(--mine)"></i>Yours</span><span><i class="dot" style="background:var(--amber)"></i>Reserved</span><span><i class="dot" style="background:var(--coral)"></i>Unavailable</span></div>
     <div class="regs" role="group" aria-label="Filter by region"><button class="reg" data-reg="" aria-pressed="${!filt.regions.size}">All regions</button>${regs.map(r=>`<button class="reg" data-reg="${esc(r)}" aria-pressed="${filt.regions.has(r)}">${esc(r)} <span class="mono">${ARTS.filter(a=>regionOf[a.name]===r).length}</span></button>`).join("")}</div>
     <div class="filters"><input type="search" id="f-q" placeholder="Search a country or city" value="${esc(filt.q)}" aria-label="Search articles">
       <select id="f-tier" aria-label="Tier"><option value="">All tiers</option>${["Top page"].concat(S.tiers.map(t=>t.name)).map(n=>`<option ${filt.tier===n?"selected":""}>${esc(n)}</option>`).join("")}</select>
       ${team?"":`<label class="chk"><input type="checkbox" id="f-avail" ${filt.avail?"checked":""}> Only what I can pick</label>`}</div>
-    <div class="rows">${list.map(a=>{const t=tierOf(a);const g=grp(a).name;const head=g!==lastG?`<div class="ghead"><span>${esc(g)}</span><span class="muted mono">${list.filter(x=>grp(x).name===g).length}</span></div>`:"";lastG=g;
+    <div class="rows">${list.map(a=>{const t=tierOf(a);const g=grp(a).name;const head=g!==lastG?`<div class="ghead"><span>${esc(g)} group</span><span class="gn">${list.filter(x=>grp(x).name===g).length} ${list.filter(x=>grp(x).name===g).length===1?"article":"articles"}</span></div>`:"";lastG=g;
       return head+`<div class="row"><div class="art"><span class="nm">${esc(a.name)}</span><span class="meta">${team&&!(S.setPrices||{})[a.name]?`<select class="gsel${manualTier(a)?" manual":""}" data-grp="${esc(a.name)}" aria-label="Group for ${esc(a.name)}" title="Move this article to another group. Its prices follow."><option value="">Auto · ${esc(autoTier(a).name)}</option>${S.tiers.map(x=>`<option value="${esc(x.name)}" ${manualTier(a)&&manualTier(a).name===x.name?"selected":""}>${esc(x.name)} · set by hand</option>`).join("")}</select>`:`<span class="tchip ${(S.setPrices||{})[a.name]?"Premium":esc(t.name)}">${esc(g)}</span>`}${team?`<span class="mono">${a.views.toLocaleString("en-GB")} views</span><span class="mono">${a.clicks.toLocaleString("en-GB")} clicks</span>${a.views>=50?`<span class="mono">${Math.round(a.clicks/a.views*100)}% click rate</span>`:""}${a.sales&&(a.sales.s1||a.sales.s2||a.sales.s3||a.sales.so)?`<span class="mono sales">Sales: ${salesBit("1st",a.sales.s1,a.sales.v1,a.sales.c1,a.sales.b1)} · ${salesBit("2nd",a.sales.s2,a.sales.v2,a.sales.c2,a.sales.b2)}${a.sales.s3?" · "+salesBit("3rd",a.sales.s3,a.sales.v3,a.sales.c3,a.sales.b3):""}${a.sales.so?" · "+salesBit("not placed",a.sales.so,a.sales.vo,a.sales.co,a.sales.bo):""}</span>`:""}`:""}</span></div>
       <div class="seats">${a.slots.map(s=>seat(a,s,v,team)).join("")}</div></div>`}).join("")||'<p class="muted">No articles match.</p>'}</div></section>`;
 }
@@ -548,10 +570,10 @@ function seat(a,s,v,team){
     const sub=st.due?"Ended "+d+(st.hold?" · held for you to "+st.hold.getDate()+" "+MON[st.hold.getMonth()]:""):(st.soon?"Ends "+d:"Runs to "+d);
     const right=renew?`<span class="badge ${st.due?"due":""}">${on?eur(priceOf(a,s.pos)):(c?"To renew":"To renew · "+eur(priceOf(a,s.pos)))}</span>`:"";
     const canR=renew&&!c&&!team&&!submitted;
-    return `<button class="seat mine${renew?" renew":""}${on?" selected":""}" ${canR?`data-k="${esc(k)}" aria-pressed="${on}"`:"disabled"} title="${esc(c&&renew?"Renew through your 2027 proposal":lab+", "+sub)}">${pos}<span class="st">${esc(lab)}</span>${right}<span class="sub">${esc(sub)}</span></button>`;}
+    return `<button class="seat mine${renew?" renew":""}${on?" selected":""}" ${canR?`data-k="${esc(k)}" aria-pressed="${on}"`:(team?"disabled":`aria-disabled="true" data-tap="${esc(k)}" data-tapl="${esc(lab+", "+sub)}"`)} title="${esc(c&&renew?"Renew through your 2027 proposal":lab+", "+sub)}">${pos}<span class="st">${esc(lab)}</span>${right}<span class="sub">${esc(sub)}</span></button>`;}
   const cls=st.k+(on?" selected":"")+(team?" plain":"");
   const canSel=st.sel && !team && !submitted;
-  return `<button class="seat ${cls}" ${canSel?`data-k="${esc(k)}" aria-pressed="${on}"`:"disabled"} title="${esc(st.label)}">
+  return `<button class="seat ${cls}" ${canSel?`data-k="${esc(k)}" aria-pressed="${on}"`:(team||submitted?"disabled":`aria-disabled="true" data-tap="${esc(k)}" data-tapl="${esc(st.label)}"`)} title="${esc(st.label)}">
     ${pos}<span class="st">${on?"Selected":esc(st.label)}</span>${st.sel?`<span class="pr">${eur(priceOf(a,s.pos))}</span>`:""}${team&&st.who?`<span class="who">${esc(st.who)}</span>`:""}</button>`;
 }
 
@@ -637,7 +659,7 @@ function bind(){
   const rm=$("rv-m"),rp=$("rv-p");
   if(rm)rm.addEventListener("click",()=>{if(!submitted&&reviews>0){reviews--;track("review_change",{count:reviews});render()}});
   if(rp)rp.addEventListener("click",()=>{if(!submitted&&viewer()!==null){reviews++;track("review_change",{count:reviews});render()}});
-  document.querySelectorAll("details.qi,details.fold,#d-done").forEach(d=>d.addEventListener("toggle",()=>{if(d.open)openD.add(d.id);else openD.delete(d.id)}));
+  document.querySelectorAll("details.qi,details.fold,#d-done,details[id^='vis-']").forEach(d=>d.addEventListener("toggle",()=>{if(d.open)openD.add(d.id);else openD.delete(d.id)}));
   const lt=$("later");if(lt)lt.addEventListener("toggle",()=>{laterOpen=lt.open;if(lt.open)track("view_later_placements",{})});
   const ra=$("renall");if(ra)ra.addEventListener("click",()=>{
     const v=viewer();const mine=[];ARTS.forEach(a=>a.slots.forEach(s=>{const st=status(a,s,v);if(st.k==="mine"&&renewable({st}))mine.push(key(a,s.pos))}));
@@ -646,6 +668,8 @@ function bind(){
     const amt=+$("o-amt").value;if(!amt)return;const T=totals();const note=$("o-note").value;
     const items=[...sel.keys()].concat(reviews?["Review article × "+reviews]:[]);
     if(await submitOffer(items,T.list+T.addons,amt,note,"offer")){track("offer_sent",{offer:amt,list:T.list+T.addons,items:items.length});submitted={offer:amt,when:new Date().toISOString(),items};render();window.scrollTo({top:0,behavior:"smooth"})}});
+  document.querySelectorAll("[data-tap]").forEach(el=>el.addEventListener("click",()=>track("tap_unavailable",{item:el.dataset.tap,label:el.dataset.tapl})));
+  document.querySelectorAll("details[data-sec]").forEach(d=>d.addEventListener("toggle",()=>{if(d.open)track("open_section",{section:d.dataset.sec})}));
   const rs=$("reset");if(rs)rs.addEventListener("click",()=>{resetSel();render()});
   document.querySelectorAll("[data-poseat]").forEach(el=>el.addEventListener("click",()=>{const o=el.dataset.poseat;if(propOpt.has(o))propOpt.delete(o);else propOpt.add(o);track("proposal_option",{country:o,on:propOpt.has(o)});render()}));
   document.querySelectorAll("[data-po]").forEach(el=>el.addEventListener("change",()=>{const o=el.dataset.po;if(el.checked)propOpt.add(o);else propOpt.delete(o);track("proposal_option",{country:o,on:el.checked});render()}));
@@ -661,7 +685,7 @@ function bind(){
     saveSettings("Saved. "+n+(el.value?" is now "+el.value:" is back on its clicks group, "+autoTier(a).name)+": "+eur(priceOf(a,1))+" 1st, "+eur(priceOf(a,2))+" 2nd")}));
   // team: prices
   document.querySelectorAll("[data-t]").forEach(el=>el.addEventListener("change",()=>{const [i,f]=el.dataset.t.split("|");S.tiers[+i][f]=Math.max(0,+el.value||0);saveSettings();render()}));
-  document.querySelectorAll("[data-sp]").forEach(el=>el.addEventListener("change",()=>{const [n,f]=el.dataset.sp.split("|");S.setPrices[n][f]=Math.max(0,+el.value||0);saveSettings();render()}));
+  document.querySelectorAll("[data-sp]").forEach(el=>el.addEventListener("change",()=>{const [n,f]=el.dataset.sp.split("|");S.setPrices[n][f]=el.value.trim()===""?null:Math.max(0,+el.value||0);saveSettings();render()}));
   document.querySelectorAll("[data-s]").forEach(el=>el.addEventListener("change",()=>{S[el.dataset.s]=Math.max(0,+el.value||0);saveSettings();render()}));
   // team: offers
   document.querySelectorAll("[data-oa]").forEach(el=>el.addEventListener("click",()=>{const [i,k]=el.dataset.oa.split("|");const o=offers[+i];o.action=k;o.counterAmt=o.counterAmt||o._pkg;o.draftText=null;o.counterDrafted=false;openD.add("of-"+(o.id||i));render()}));
