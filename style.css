@@ -291,3 +291,4 @@ details.ren .rsum{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;fo
 .kgrid b{font-size:1.15rem}
 .kgrid .muted{font-size:.8rem}
 .ren-list tfoot td{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line)}
+.ren-list td.num{white-space:nowrap}
