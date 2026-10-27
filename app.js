@@ -234,7 +234,7 @@ function invoice(o){
   const rows=o.items.map(it=>{
     const m=String(it).match(/^(.*) · (1st|2nd)$/);const a=m&&ARTS.find(x=>x.name===m[1]);
     if(a){const pos=m[2]==="1st"?1:2,p=priceOf(a,pos),t=grp(a).name;sub+=p;if((S.discTiers||[]).includes(t)){elig++;eligVal+=p}return `<tr><td>${esc(a.name)}</td><td>${m[2]}</td><td>${esc(t)}</td><td class="num">${eur(p)}</td></tr>`}
-    const r=String(it).match(/^Review article × (\d+)$/);if(r){const p=S.review*+r[1];sub+=p;return `<tr><td>Review article × ${r[1]}</td><td>Add-on</td><td>–</td><td class="num">${eur(p)}</td></tr>`}
+    const r=String(it).match(/^Review article × (\d+)$/);if(r){const p=S.review*+r[1];sub+=p;return `<tr><td>Review article × ${r[1]}</td><td>Add-on</td><td></td><td class="num">${eur(p)}</td></tr>`}
     priced=false;return `<tr><td colspan="3">${esc(it)}</td><td class="num muted">in proposal</td></tr>`;
   }).join("");
   const disc=elig>=S.discMin?Math.round(eligVal*S.discPct/100):0;const pkg=priced?sub-disc:o.list;
@@ -505,21 +505,21 @@ function currentPanel(v){
   const contract=c?mine.filter(m=>!m.st.fr&&m.s.exp===c.contractEnd).sort((x,y)=>x.a.name.localeCompare(y.a.name)):[];
   const other=c?mine.filter(m=>!m.st.fr&&m.s.exp!==c.contractEnd):[];
   if(c){
-    const ex=contract.filter(m=>(c.exclusive||[]).includes(m.a.name)),nx=contract.filter(m=>!(c.exclusive||[]).includes(m.a.name));
+    const isEx=m=>m.s.pos===1&&(c.exclusive||[]).includes(m.a.name),exOut=other.filter(isEx),ex=contract.filter(m=>(c.exclusive||[]).includes(m.a.name)),nx=contract.filter(m=>!(c.exclusive||[]).includes(m.a.name));
     const accept=propAccepted?`<div class="done"><b>Proposal accepted.</b> €${ptot(c)} a month${propOpt.size?", including "+[...propOpt].join(", "):""}. We'll send the agreement to confirm.${PREVIEW?' <span class="muted">Preview only, nothing was sent.</span>':""}</div>`
       :(propConfirm?`<div class="step"><b>Accept the 2027 proposal at €${ptot(c)} a month?</b><p class="note">${propOpt.size?"Including "+[...propOpt].join(", ")+". ":"Core renewal only, no optional countries. "}We'll confirm by email and send the agreement.</p><div class="acts"><button class="btn primary" id="prop-yes" ${sending?"disabled":""}>Yes, accept</button><button class="btn ghost" id="prop-back">Back</button></div></div>`
       :`<div class="acts"><button class="btn primary" id="prop-ok">Accept this proposal</button></div><p class="note">Questions or changes? Just reply to our email.</p>`);
     return `<section class="panel"><div class="phead"><h2>${esc(c.title)}</h2><span class="muted">${contract.length} contract articles</span></div>
     <p class="muted">${esc(c.term)}</p>
     <div class="cur">${(c.lines||[]).map(l=>`<div class="ci" style="grid-template-columns:minmax(0,1fr) auto"><span>${esc(l[0].replace("{n}",contract.length))}</span><span class="mono">${esc(l[1])}</span></div>`).join("")}
-      <details class="ci" data-sec="exclusive list" style="display:block"><summary style="cursor:pointer;font-size:.88rem"><b>Exclusive 1st position · ${ex.length}</b> <span class="muted">no other eSIM can take 1st</span></summary>${chipList(ex.map(m=>m.a.name))}</details>
-      <details class="ci" data-sec="non-exclusive list" style="display:block"><summary style="cursor:pointer;font-size:.88rem"><b>1st position by default, non-exclusive · ${nx.length}</b> <span class="muted">first refusal if another provider asks, at up to €300–350</span></summary>${chipList(nx.map(m=>m.a.name))}</details>
+      <details class="ci" data-sec="exclusive list" style="display:block"><summary style="cursor:pointer;font-size:.88rem"><b>Exclusive 1st position · ${ex.length+exOut.length}</b> <span class="muted">no other eSIM can take 1st</span></summary>${chipList(ex.map(m=>m.a.name))}${exOut.length?`<p class="note" style="margin-top:6px">Also exclusive: ${exOut.map(m=>`<b>${esc(m.a.name)}</b> (runs separately to ${fmtD(m.st.exp)})`).join(", ")}. ${exOut.length===1?"It is":"They are"} in the list below.</p>`:""}</details>
+      ${nx.length?`<details class="ci" data-sec="non-exclusive list" style="display:block"><summary style="cursor:pointer;font-size:.88rem"><b>1st position by default, non-exclusive · ${nx.length}</b> <span class="muted">first refusal if another provider asks, at up to €300 to €350</span></summary>${chipList(nx.map(m=>m.a.name))}</details>`:""}
       ${c.banners?`<div class="ci" style="grid-template-columns:minmax(0,1fr);font-size:.88rem"><span><b>Coworking banners</b> <span class="muted">${esc(c.banners)}</span></span></div>`:""}
     <div class="ci" style="grid-template-columns:minmax(0,1fr)"><span class="eyebrow">Optional 1st positions · tick the ones you want</span></div>
     ${(c.options||[]).map(o=>`<label class="ci"><input type="checkbox" id="po-${slug(o)}" data-po="${esc(o)}" ${propOpt.has(o)?"checked":""} ${propAccepted?"disabled":""}><span>${esc(o)} 1st</span><span class="mono">+€${c.prices[o]} a month</span></label>`).join("")}
     <div class="ci" style="grid-template-columns:minmax(0,1fr) auto;font-weight:600"><span>Your total${propOpt.size?" with "+propOpt.size+" optional":""}</span><span class="mono">€${ptot(c)} a month</span></div></div>
     ${accept}
-    ${other.length?`<details data-sec="placements outside the contract" style="border-top:1px solid var(--line);padding-top:10px"><summary style="cursor:pointer;font-weight:600">Also yours, outside this contract · ${other.length} placements, ending ${fmtM(other[0].st.exp)} to ${fmtM(other[other.length-1].st.exp)}</summary><div class="cur" style="margin-top:8px">${other.map(m=>`<div class="ci" style="grid-template-columns:minmax(0,1fr) auto"><span>${esc(m.a.name)} · ${m.s.pos===1?"1st":"2nd"}</span><span class="pill ok">Runs to ${fmtD(m.st.exp)}</span></div>`).join("")}</div><p class="note">Paid separately and unchanged by this proposal. They can join the contract when each one ends.</p></details>`:""}
+    ${other.length?`<details data-sec="placements outside the contract" style="border-top:1px solid var(--line);padding-top:10px"><summary style="cursor:pointer;font-weight:600">Also yours, outside this contract · ${other.length} placements, ending ${fmtM(other[0].st.exp)} to ${fmtM(other[other.length-1].st.exp)}</summary><div class="cur" style="margin-top:8px">${other.map(m=>`<div class="ci" style="grid-template-columns:minmax(0,1fr) auto"><span>${esc(m.a.name)} · ${m.s.pos===1?"1st":"2nd"}${isEx(m)?' <span class="pill" style="margin-left:6px">Exclusive</span>':""}</span><span class="pill ok">Runs to ${fmtD(m.st.exp)}</span></div>`).join("")}</div><p class="note">Paid separately and unchanged by this proposal. They can join the contract when each one ends.</p></details>`:""}
     <p class="note">Your contract articles are covered by this proposal, so they don't carry separate prices below. Anything else open is yours to add.</p></section>`;
   }
   const now=mine.filter(renewable), later=mine.filter(m=>!renewable(m));
