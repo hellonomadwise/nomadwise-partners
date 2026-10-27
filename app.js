@@ -34,7 +34,7 @@ const sel=new Map();
 let reviews=0, submitted=null, laterOpen=false, sending=false, confirmOffer=null, draftNote="";
 const openD=new Set();
 const propOpt=new Set(); let propAccepted=false, propConfirm=false;
-let filt={q:"",tier:"",avail:false,regions:new Set()};
+let filt={q:"",tier:"",avail:false,regions:new Set(),prov:"",ppos:""};
 const drafts={};
 
 // ---------- partner activity (partners only; admins and previews are never tracked) ----------
@@ -94,6 +94,8 @@ const grp=a=>{const o=S.setPrices[a.name];const name=a.grp!==undefined?a.grp:(o&
 const priceOf=(a,pos)=>{if(a.grp!==undefined)return +(pos===1?a.p1:a.p2);const o=S.setPrices[a.name];if(o&&o["p"+pos]!=null)return +o["p"+pos];const t=tierOf(a);return pos===1?+t.p1:+t.p2};
 
 // Providers on a contract see their deal, not per-slot list prices
+// Admin filter: who currently holds a slot (paid now, or ended under 60 days ago and still in renewal)
+const holdsNow=s=>s.prov&&(!s.exp||days(D(s.exp),TODAY)>=-60);
 function status(a,s,viewer){
   const st=status0(a,s,viewer);
   const c=viewer&&S.contracts[viewer];
@@ -557,6 +559,7 @@ function inventoryPanel(v){
   const list=ARTS.filter(a=>{
     if(filt.q && !a.name.toLowerCase().includes(filt.q.toLowerCase())) return false;
     if(filt.tier && grp(a).name!==filt.tier) return false;
+    if(team&&filt.prov && !a.slots.some(s=>s.prov===filt.prov&&holdsNow(s)&&(!filt.ppos||String(s.pos)===filt.ppos))) return false;
     if(filt.regions.size && !filt.regions.has(regionOf[a.name])) return false;
     if(filt.avail && !a.slots.some(s=>status(a,s,v).sel)) return false;
     return true;
@@ -571,7 +574,8 @@ function inventoryPanel(v){
     <div class="regs" role="group" aria-label="Filter by region"><button class="reg" data-reg="" aria-pressed="${!filt.regions.size}">All regions</button>${regs.map(r=>`<button class="reg" data-reg="${esc(r)}" aria-pressed="${filt.regions.has(r)}">${esc(r)} <span class="mono">${ARTS.filter(a=>regionOf[a.name]===r).length}</span></button>`).join("")}</div>
     <div class="filters"><input type="search" id="f-q" placeholder="Search a country or city" value="${esc(filt.q)}" aria-label="Search articles">
       <select id="f-tier" aria-label="Tier"><option value="">All tiers</option>${["Top page"].concat(S.tiers.map(t=>t.name)).map(n=>`<option ${filt.tier===n?"selected":""}>${esc(n)}</option>`).join("")}</select>
-      ${team?"":`<label class="chk"><input type="checkbox" id="f-avail" ${filt.avail?"checked":""}> Only what I can pick</label>`}</div>
+      ${team?(()=>{const cnt={};ARTS.forEach(a=>a.slots.forEach(s=>{if(holdsNow(s))cnt[s.prov]=(cnt[s.prov]||0)+1}));const ps=Object.keys(cnt).sort((x,y)=>cnt[y]-cnt[x]||x.localeCompare(y));
+        return `<select id="f-prov" aria-label="Provider"><option value="">All providers</option>${ps.map(p=>`<option value="${esc(p)}" ${filt.prov===p?"selected":""}>${esc(p)} · ${cnt[p]}</option>`).join("")}</select>${filt.prov?`<select id="f-ppos" aria-label="Position"><option value="">1st or 2nd</option><option value="1" ${filt.ppos==="1"?"selected":""}>1st only</option><option value="2" ${filt.ppos==="2"?"selected":""}>2nd only</option></select>`:""}`})():`<label class="chk"><input type="checkbox" id="f-avail" ${filt.avail?"checked":""}> Only what I can pick</label>`}</div>
     <div class="rows">${list.map(a=>{const t=tierOf(a);const g=grp(a).name;const head=g!==lastG?`<div class="ghead"><span>${esc(g)} group</span><span class="gn">${list.filter(x=>grp(x).name===g).length} ${list.filter(x=>grp(x).name===g).length===1?"article":"articles"}</span></div>`:"";lastG=g;
       return head+`<div class="row"><div class="art"><span class="nm">${esc(a.name)}</span><span class="meta">${team&&!(S.setPrices||{})[a.name]?`<select class="gsel${manualTier(a)?" manual":""}" data-grp="${esc(a.name)}" aria-label="Group for ${esc(a.name)}" title="Move this article to another group. Its prices follow."><option value="">Auto · ${esc(autoTier(a).name)}</option>${S.tiers.map(x=>`<option value="${esc(x.name)}" ${manualTier(a)&&manualTier(a).name===x.name?"selected":""}>${esc(x.name)} · set by hand</option>`).join("")}</select>`:`<span class="tchip ${(S.setPrices||{})[a.name]?"Premium":esc(t.name)}">${esc(g)}</span>`}${team?`<span class="mono">${a.views.toLocaleString("en-GB")} views</span><span class="mono">${a.clicks.toLocaleString("en-GB")} clicks</span>${a.views>=50?`<span class="mono">${Math.round(a.clicks/a.views*100)}% click rate</span>`:""}${a.sales&&(a.sales.s1||a.sales.s2||a.sales.s3||a.sales.so)?`<span class="mono sales">Sales: ${salesBit("1st",a.sales.s1,a.sales.v1,a.sales.c1,a.sales.b1)} · ${salesBit("2nd",a.sales.s2,a.sales.v2,a.sales.c2,a.sales.b2)}${a.sales.s3?" · "+salesBit("3rd",a.sales.s3,a.sales.v3,a.sales.c3,a.sales.b3):""}${a.sales.so?" · "+salesBit("not placed",a.sales.so,a.sales.vo,a.sales.co,a.sales.bo):""}</span>`:""}`:""}</span></div>
       <div class="seats">${a.slots.map(s=>seat(a,s,v,team)).join("")}</div></div>`}).join("")||'<p class="muted">No articles match.</p>'}</div></section>`;
@@ -680,6 +684,8 @@ function bind(){
   const q=$("f-q");if(q)q.addEventListener("input",()=>{filt.q=q.value;clearTimeout(searchT);const sq=q.value.trim();if(sq.length>=3)searchT=setTimeout(()=>track("search",{q:sq}),1500);const pos=q.selectionStart;render();const n=$("f-q");n.focus();n.setSelectionRange(pos,pos)});
   const ft=$("f-tier");if(ft)ft.addEventListener("change",()=>{filt.tier=ft.value;if(ft.value)track("filter_tier",{tier:ft.value});render()});
   document.querySelectorAll("[data-reg]").forEach(el=>el.addEventListener("click",()=>{const r=el.dataset.reg;if(r==="")filt.regions.clear();else if(filt.regions.has(r))filt.regions.delete(r);else{filt.regions.add(r);track("filter_region",{region:r})}render()}));
+  const fpv=$("f-prov");if(fpv)fpv.addEventListener("change",()=>{filt.prov=fpv.value;if(!fpv.value)filt.ppos="";render()});
+  const fpp=$("f-ppos");if(fpp)fpp.addEventListener("change",()=>{filt.ppos=fpp.value;render()});
   const fa=$("f-avail");if(fa)fa.addEventListener("change",()=>{filt.avail=fa.checked;if(fa.checked)track("filter_available",{});render()});
   const rm=$("rv-m"),rp=$("rv-p");
   if(rm)rm.addEventListener("click",()=>{if(!submitted&&reviews>0){reviews--;confirmOffer=null;track("review_change",{count:reviews});render()}});
