@@ -140,10 +140,11 @@ async function reloadTeam(){const {data,error}=await sb.rpc("partners_team_data"
 function gate(){
   $("topbar").innerHTML="";
   $("forwho").innerHTML="";$("stats").innerHTML="";$("rail").innerHTML="";
-  $("main").innerHTML=`<section class="panel gate"><h2>Welcome</h2>
-    <p class="muted">This is where Nomadwise partners see open placements on our eSIM guides, their own placements, and send us an offer.</p>
-    <p><b>Partners:</b> please open the private link we sent you by email.</p>
-    <div class="acts"><button class="btn" id="g-in">Nomadwise team sign in</button></div></section>`;
+  document.querySelector("header.top h1").textContent="Partner portal";
+  $("main").innerHTML=`<section class="panel gate"><h2>Welcome to Nomadwise Partners</h2>
+    <p><b>Already a partner?</b> Open the private link provided to you.</p>
+    <p><b>Interested in partnering?</b> Write to us at <a href="mailto:hello@nomadwise.io" style="color:var(--accent)">hello@nomadwise.io</a></p>
+    <div class="acts" style="margin-top:4px"><button class="btn small ghost" id="g-in">Team sign in</button></div></section>`;
   $("grid").style.gridTemplateColumns="minmax(0,1fr)";
   $("g-in").addEventListener("click",signIn);
 }
