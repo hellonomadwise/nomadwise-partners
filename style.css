@@ -238,3 +238,12 @@ label.fl input,label.fl textarea{background:var(--bg);border:1px solid var(--lin
 .linkcell{display:flex;gap:6px;flex-wrap:wrap}
 .loading{padding:60px 0;text-align:center;color:var(--muted)}
 .fold-in .dup{display:none}
+/* sign-in card: roomier on desktop */
+@media (min-width:900px){
+  .gate{max-width:640px;margin-top:80px;padding:40px 44px;gap:20px}
+  .gate h2{font-size:1.9rem}
+  .gate label.fl{font-size:.95rem}
+  .gate label.fl input{padding:14px 16px;font-size:1.05rem;border-radius:10px}
+  .gate .btn.primary{padding:14px 18px;font-size:1.05rem;border-radius:10px}
+  .gate .done,.gate .note{font-size:1rem}
+}
