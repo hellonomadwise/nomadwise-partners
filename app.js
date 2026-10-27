@@ -5,7 +5,9 @@
 (function(){
 const SB_URL="https://xclqfbuwrijpwtgbvrim.supabase.co";
 const SB_KEY="sb_publishable_BdLDgE41WZXKIR7SaAvlxg_SJT3Ad_h";
-const sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{flowType:"pkce",persistSession:true,detectSessionInUrl:true}});
+const sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+const SKEY="nw_partners_session";
+const store={get(){try{return localStorage.getItem(SKEY)}catch(e){return null}},set(v){try{localStorage.setItem(SKEY,v)}catch(e){}},clear(){try{localStorage.removeItem(SKEY)}catch(e){}}};
 
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -23,7 +25,7 @@ const REGION_ORDER=["Europe","Asia","Caucasus & Central Asia","Middle East","Afr
 // ---------- state ----------
 let ROLE=null;           // "team" | "provider"
 let ME=null;             // provider name, or the team member's email
-let TOKEN=null;
+let SESSION=null; let ACCESS=[]; let MYNAME="";
 let S={tiers:[],setPrices:{},packages:{},contracts:{},firstRefusal:{articles:[]},discTiers:[],review:0,discMin:0,discPct:0};
 let ARTS=[], TOTALS=null, PROVIDERS=[], TEAM=[], REMS={}, offers=[];
 const regionOf={};
@@ -81,26 +83,33 @@ function status0(a,s,viewer){
 }
 
 // ---------- loading ----------
-function parseToken(){
-  const m=location.hash.match(/k=([a-f0-9]{20,})/i);
-  if(m)return m[1];
-  const q=new URLSearchParams(location.search).get("k");
-  return q&&/^[a-f0-9]{20,}$/i.test(q)?q:null;
-}
 function setRegions(){ARTS.forEach(a=>{regionOf[a.name]=a.region||"Other"})}
+const firstOf=n=>String(n||"").trim().split(/\s+/)[0]||"";
 
 async function boot(){
-  TOKEN=parseToken();
-  if(TOKEN) return loadProvider();
-  const {data:{session}}=await sb.auth.getSession();
-  if(session) return loadTeam(session);
-  gate();
+  const m=location.hash.match(/login=([a-f0-9]{20,})/i);
+  if(m){
+    history.replaceState(null,"",location.pathname);
+    const {data,error}=await sb.rpc("partners_redeem",{p_login:m[1]});
+    if(error) return message("We couldn't sign you in just now","Please try the link again in a minute.");
+    if(!data) return gate("This sign-in link has expired. Enter your email for a new one.");
+    store.set(data);
+  }
+  SESSION=store.get();
+  if(!SESSION) return gate();
+  return load();
 }
 
-async function loadProvider(){
-  const {data,error}=await sb.rpc("partners_provider_page",{p_token:TOKEN});
-  if(error) return message("We couldn't load your page just now","Please refresh in a minute. If it keeps happening, reply to our last email and we'll sort it out.");
-  if(!data) return message("This link is no longer active","Please ask the Nomadwise team for a new link.");
+async function load(){
+  const {data,error}=await sb.rpc("partners_page",{p_session:SESSION});
+  if(error) return message("We couldn't load your page just now","Please refresh in a minute.");
+  if(!data){store.clear();SESSION=null;return gate("Please sign in again.")}
+  MYNAME=data.name||"";
+  if(data.role==="team"){
+    ROLE="team"; ME=data.me; applyTeamData(data);
+    mode="team"; asProv=(PROVIDERS.find(p=>S.contracts[p.name])||PROVIDERS[0]||{name:"__new"}).name;
+    return render();
+  }
   ROLE="provider"; ME=data.provider; mode="prov"; asProv=ME;
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   ARTS=(data.articles||[]).map(a=>({name:a.name,region:a.region,grp:a.grp,p1:+a.p1,p2:+a.p2,slots:a.slots.map(s=>({pos:s.pos,prov:s.prov||"",exp:s.exp||"",flag:s.flag||""}))}));
@@ -111,41 +120,36 @@ async function loadProvider(){
   }else if(lo&&lo.status==="new"){
     submitted={offer:+lo.offer,when:lo.created_at,items:lo.items||[]};
   }
-  $("topbar").innerHTML=`<span>Private page for ${esc(ME)} · please don't forward this link</span>`;
-  render();
-}
-
-async function loadTeam(session){
-  const {data,error}=await sb.rpc("partners_team_data");
-  const email=(session&&session.user&&session.user.email)||"";
-  if(error){
-    if(/team only/i.test(error.message)) return message("This account isn't on the team list","You're signed in as "+email+". Ask Jonathan or Leonie to add this email under Who has access, or sign in with the Nomadwise Google account.",true);
-    return message("Couldn't load the team view",error.message,true);
-  }
-  ROLE="team"; ME=data.me||email;
-  applyTeamData(data);
-  mode="team"; asProv=(PROVIDERS.find(p=>S.contracts[p.name])||PROVIDERS[0]||{name:"__new"}).name;
+  $("topbar").innerHTML=`<span>Signed in as ${esc(MYNAME||data.me)}${MYNAME?` · ${esc(data.me)}`:""}</span><button id="out">Sign out</button>`;
+  $("out").addEventListener("click",signOut);
   render();
 }
 function applyTeamData(data){
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   ARTS=(data.articles||[]).map(r=>({name:r.name,region:r.region,views:r.views,clicks:r.clicks,slots:[{pos:1,prov:r.p1_prov||"",exp:r.p1_exp||"",flag:r.p1_flag||""},{pos:2,prov:r.p2_prov||"",exp:r.p2_exp||"",flag:r.p2_flag||""}]}));
-  PROVIDERS=data.providers||[]; TEAM=data.team||[]; REMS=data.reminders||{};
-  const emailOf=p=>(PROVIDERS.find(x=>x.name===p)||{}).contact_email||"";
-  offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
+  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{};
+  offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailsOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
   setRegions();
 }
-async function reloadTeam(){const {data,error}=await sb.rpc("partners_team_data");if(!error&&data){applyTeamData(data);render()}}
+const emailsOf=p=>ACCESS.filter(x=>x.provider===p).map(x=>x.email).join(",");
+const namesOf=p=>ACCESS.filter(x=>x.provider===p&&x.name).map(x=>firstOf(x.name));
+async function reloadTeam(){const {data,error}=await sb.rpc("partners_page",{p_session:SESSION});if(!error&&data&&data.role==="team"){applyTeamData(data);render()}}
 
-function gate(){
-  $("topbar").innerHTML="";
+function gate(note){
+  $("topbar").innerHTML="";$("switch").innerHTML="";
   $("forwho").innerHTML="";$("stats").innerHTML="";$("rail").innerHTML="";
   document.querySelector("header.top h1").textContent="Partner portal";
   $("main").innerHTML=`<section class="panel gate"><h2>Welcome to Nomadwise Partners</h2>
-    <p><b>Already a partner?</b> Open the private link provided to you.</p>
-    <div class="acts" style="margin-top:4px"><button class="btn small ghost" id="g-in">Team sign in</button></div></section>`;
+    ${note?`<p class="note">${esc(note)}</p>`:""}
+    <form id="signin" class="col" style="gap:10px">
+      <label class="fl">Your email<input id="si-email" type="email" autocomplete="email" required placeholder="name@company.com"></label>
+      <button class="btn primary" type="submit">Email me a sign-in link</button>
+    </form>
+    <div class="done" id="si-done" hidden>If that email has access, a sign-in link is on its way. It works for the next hour.</div></section>`;
   $("grid").style.gridTemplateColumns="minmax(0,1fr)";
-  $("g-in").addEventListener("click",signIn);
+  $("signin").addEventListener("submit",async e=>{e.preventDefault();const btn=e.target.querySelector("button");btn.disabled=true;
+    await sb.rpc("partners_request_link",{p_email:$("si-email").value});
+    $("signin").hidden=true;$("si-done").hidden=false});
 }
 function message(title,body,signedIn){
   $("forwho").innerHTML="";$("stats").innerHTML="";$("rail").innerHTML="";
@@ -153,11 +157,7 @@ function message(title,body,signedIn){
   $("main").innerHTML=`<section class="panel gate"><h2>${esc(title)}</h2><p class="muted">${esc(body)}</p>${signedIn?`<div class="acts"><button class="btn" id="g-out">Sign out</button></div>`:""}</section>`;
   if(signedIn)$("g-out").addEventListener("click",signOut);
 }
-async function signIn(){
-  const {error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin+location.pathname}});
-  if(error)toast("Sign in didn't start: "+error.message);
-}
-async function signOut(){await sb.auth.signOut();location.replace(location.origin+location.pathname)}
+async function signOut(){try{await sb.rpc("partners_sign_out",{p_session:SESSION})}catch(e){}store.clear();location.replace(location.origin+location.pathname)}
 
 // ---------- offers (team) ----------
 function invoice(o){
@@ -181,22 +181,22 @@ const ACT={
   counter:{label:"Counter",what:"Suggest a different price. Approving opens the reply in your email app. Hold the slots for them for 7 days while they decide."},
   decline:{label:"Decline",what:"Drafts a polite no and opens it in your email app. They can then send a new offer from their page."}
 };
-const firstName=o=>o.from.replace(/ \(.*\)$/,"");
+const firstName=o=>{const n=namesOf(o.from);return n.length?n.join(" and "):o.from+" team"};
 const itemLines=o=>o.items.map(it=>{const m=String(it).match(/^(.*) · (1st|2nd)$/);return "- "+(m?m[1]+", "+m[2]+" position":it)}).join("\n");
 const holdDate=()=>{const d=new Date(TODAY);d.setDate(d.getDate()+7);return fmtD(d)};
 function draftFor(o){
   const n=firstName(o),sig="\n\nBest,\nThe Nomadwise team";
   if(o.kind==="proposal"){
-    if(o.action==="accept")return `Hi ${n} team,\n\nThanks for confirming the 2027 proposal at ${eur(o.offer/12)} a month:\n${itemLines(o)}\n\nWe'll send the agreement over shortly, and everything carries on without a break from 1 January.`+sig;
-    if(o.action==="counter")return `Hi ${n} team,\n\nThanks for coming back on the 2027 proposal. Before we confirm, we'd like to suggest ${eur(o.counterAmt/12)} a month for:\n${itemLines(o)}\n\nJust reply here and we'll send the agreement.`+sig;
-    return `Hi ${n} team,\n\nThanks for coming back on the 2027 proposal. Unfortunately we can't go ahead on these terms. Happy to talk through options, just reply here.`+sig;
+    if(o.action==="accept")return `Hi ${n},\n\nThanks for confirming the 2027 proposal at ${eur(o.offer/12)} a month:\n${itemLines(o)}\n\nWe'll send the agreement over shortly, and everything carries on without a break from 1 January.`+sig;
+    if(o.action==="counter")return `Hi ${n},\n\nThanks for coming back on the 2027 proposal. Before we confirm, we'd like to suggest ${eur(o.counterAmt/12)} a month for:\n${itemLines(o)}\n\nJust reply here and we'll send the agreement.`+sig;
+    return `Hi ${n},\n\nThanks for coming back on the 2027 proposal. Unfortunately we can't go ahead on these terms. Happy to talk through options, just reply here.`+sig;
   }
-  if(o.action==="accept")return `Hi ${n} team,\n\nThanks for your offer. We're happy to accept ${eur(o.offer)} for these placements:\n${itemLines(o)}\n\nEach placement runs for 12 months from the day it goes live. We'll send the invoice shortly, and the placements go live once it's paid.`+sig;
-  if(o.action==="counter")return `Hi ${n} team,\n\nThanks for your offer of ${eur(o.offer)}. We can't go quite that low for this package, but we can do ${eur(o.counterAmt)} for:\n${itemLines(o)}\n\nWe're holding these placements for you until ${holdDate()}. Reply here to accept, or send a new offer from your partner page.`+sig;
-  return `Hi ${n} team,\n\nThanks for your offer of ${eur(o.offer)}. Unfortunately we can't accept it for this package.\n\nIf it helps, you could choose a smaller selection at the listed price${o.items.some(it=>/ · 1st$/.test(it))?", or look at 2nd positions on the same articles":""}. Your partner page shows everything that's open, and you're welcome to send a new offer.`+sig;
+  if(o.action==="accept")return `Hi ${n},\n\nThanks for your offer. We're happy to accept ${eur(o.offer)} for these placements:\n${itemLines(o)}\n\nEach placement runs for 12 months from the day it goes live. We'll send the invoice shortly, and the placements go live once it's paid.`+sig;
+  if(o.action==="counter")return `Hi ${n},\n\nThanks for your offer of ${eur(o.offer)}. We can't go quite that low for this package, but we can do ${eur(o.counterAmt)} for:\n${itemLines(o)}\n\nWe're holding these placements for you until ${holdDate()}. Reply here to accept, or send a new offer from your partner page.`+sig;
+  return `Hi ${n},\n\nThanks for your offer of ${eur(o.offer)}. Unfortunately we can't accept it for this package.\n\nIf it helps, you could choose a smaller selection at the listed price${o.items.some(it=>/ · 1st$/.test(it))?", or look at 2nd positions on the same articles":""}. Your partner page shows everything that's open, and you're welcome to send a new offer.`+sig;
 }
 function openMail(to,subject,body){
-  const addr=/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to||"")?to:"";
+  const addr=String(to||"").split(",").map(s=>s.trim()).filter(s=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s)).join(",");
   location.href="mailto:"+addr+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
 }
 function actionBlock(o,i){
@@ -210,7 +210,7 @@ function actionBlock(o,i){
     <label class="fl">Your counter price for the ${o.kind==="proposal"?"year":"package"} (€)<input id="ca-${i}" type="number" min="1" value="${Math.round(o.counterAmt||o._pkg||o.offer)}"></label>
     <div class="acts"><button class="btn small primary" data-cd="${i}">Draft the reply</button><button class="btn small ghost" data-back="${i}">Back</button></div></div>`;
   return `<div class="step"><b>${a.label}</b><p class="note">${a.what}</p>
-    ${o.email?"":`<p class="note"><b>No email saved for ${esc(o.from)}.</b> Add it under Who has access, or type it into your email app.</p>`}
+    ${o.email?"":`<p class="note"><b>No one from ${esc(o.from)} is on the access list yet.</b> Add them under Who has access, or type their email into your email app.</p>`}
     <label class="eyebrow" for="dt-${i}">Draft reply to the provider · edit freely</label><textarea class="draft" id="dt-${i}" data-dt="${i}" rows="12">${esc(o.draftText??(o.draftText=draftFor(o)))}</textarea>
     <div class="acts"><button class="btn small primary" data-send="${i}">Approve and open in email</button><button class="btn small ghost" data-back="${i}">Back</button></div></div>`;
 }
@@ -218,7 +218,7 @@ function chipList(names){
   const g={};names.forEach(n=>{const r=regionOf[n]||"Other";(g[r]=g[r]||[]).push(n)});
   return `<div class="clist">${REGION_ORDER.concat("Other").filter(r=>g[r]).map(r=>`<div class="cgrp"><span class="eyebrow">${esc(r)} · ${g[r].length}</span><div class="chips">${g[r].sort((a,b)=>a.replace(/^The /,"").localeCompare(b.replace(/^The /,""))).map(n=>`<span class="chip">${esc(n)}</span>`).join("")}</div></div>`).join("")}</div>`;
 }
-const fold=(id,title,inner)=>`<details class="fold" id="${id}" ${openD.has(id)?"open":""}><summary>${title}<span class="tag-internal">Team only</span></summary><div class="fold-in">${inner}</div></details>`;
+const fold=(id,title,inner)=>`<details class="fold" id="${id}" ${openD.has(id)?"open":""}><summary>${title}<span class="tag-internal">Admin only</span></summary><div class="fold-in">${inner}</div></details>`;
 const renewable=m=>m.st.fr||m.st.due||m.st.soon;
 const ptot=c=>c.base+[...propOpt].reduce((t,o)=>t+((c.prices||{})[o]||0),0);
 const key=(a,pos)=>a.name+" · "+(pos===1?"1st":"2nd");
@@ -229,18 +229,20 @@ function render(){
   $("grid").style.gridTemplateColumns="";
   const v=viewer();
   if(ROLE==="team"){
-    $("topbar").innerHTML=`<span>Signed in as ${esc(ME)}</span><button id="out">Sign out</button>`;
+    $("topbar").innerHTML=`<span>Signed in as ${esc(MYNAME||ME)}${MYNAME?` · ${esc(ME)}`:""}</span><button id="out">Sign out</button>`;
     $("out").addEventListener("click",signOut);
     const opts=PROVIDERS.map(p=>p.name).concat("__new");
     $("switch").innerHTML=`<div class="switch" role="group" aria-label="View switch"><span class="eyebrow">View</span>
-      <div class="seg"><button id="v-team" aria-pressed="${mode==="team"}">Nomadwise team</button><button id="v-prov" aria-pressed="${mode!=="team"}">See a provider's page</button></div>
+      <div class="seg"><button id="v-team" aria-pressed="${mode==="team"}">Admin view</button><button id="v-prov" aria-pressed="${mode!=="team"}">See a provider's page</button></div>
       <select id="as-prov" aria-label="Preview as provider" ${mode==="team"?"disabled":""}>${opts.map(n=>`<option value="${esc(n)}" ${n===asProv?"selected":""}>${n==="__new"?"as a new provider":"as "+esc(n)}</option>`).join("")}</select>
-      <span class="muted">${mode==="team"?"Only you and Leonie see this view.":"Preview only. This is what their private link shows."}</span></div>`;
+      <span class="muted">${mode==="team"?"Only admins see this view.":"Preview only. This is what their private link shows."}</span></div>`;
     $("v-team").addEventListener("click",()=>{mode="team";render()});
     $("v-prov").addEventListener("click",()=>{mode="prov";resetSel();render()});
     $("as-prov").addEventListener("change",e=>{asProv=e.target.value;resetSel();render()});
   }
-  $("forwho").innerHTML=v===null?"<b>Team view</b> · visible only to Nomadwise":(v==="__new"?"Prepared for <b>a new partner</b>":"Prepared for <b>"+esc(v)+"</b>");
+  const who=ROLE==="provider"&&MYNAME?"<b>"+esc(firstOf(MYNAME))+"</b> at <b>"+esc(v)+"</b>":"<b>"+esc(v)+"</b>";
+  $("forwho").innerHTML=v===null?"<b>Admin view</b> · visible only to Nomadwise":(v==="__new"?"Prepared for <b>a new partner</b>":"Prepared for "+who);
+  if(ROLE==="provider"){document.querySelector("header.top h1").textContent=MYNAME?"Welcome, "+firstOf(MYNAME):"Partner placements"}
   const totalViews=TOTALS?+TOTALS.views:ARTS.reduce((t,a)=>t+a.views,0);
   const totalClicks=TOTALS?+TOTALS.clicks:ARTS.reduce((t,a)=>t+a.clicks,0);
   const av=[0,0,0];ARTS.forEach(a=>a.slots.forEach(s=>{if(status(a,s,v).k==="available")av[s.pos]++}));
@@ -266,15 +268,15 @@ function teamPanels(){
   ARTS.forEach(a=>a.slots.forEach(s=>{const st=status(a,s,null);
     if(s.prov&&st.exp&&(st.due||st.soon)){(byP[s.prov]=byP[s.prov]||[]).push({a,s,st})}}));
   const provs=Object.keys(byP).sort((x,y)=>byP[y].length-byP[x].length);
-  const how=`<section class="panel internal"><div class="phead"><h2 class="dup">How this works<span class="tag-internal">Team only</span></h2></div>
+  const how=`<section class="panel internal"><div class="phead"><h2 class="dup">How this works<span class="tag-internal">Admin only</span></h2></div>
     <ol class="how">
       <li><b>One master list</b><span>Who holds which slot comes from the Notion placements table. Prices and rules are edited here, under Prices and rules.</span></li>
-      <li><b>Private links</b><span>Each provider gets their own link from Who has access. It shows open slots, prices and their own placements. Never other providers' names, prices or per-article numbers. A link can be switched off at any time.</span></li>
+      <li><b>Sign in by email</b><span>Give someone access with their name, email and role. Partners sign in at partners.nomadwise.io and see open slots, prices and their own placements, never other providers' names, prices or per-article numbers.</span></li>
       <li><b>They pick and offer</b><span>Providers tick slots and add-ons, see the list total, and send one package offer. No auction, no automatic replies.</span></li>
       <li><b>We decide</b><span>Offers land in the inbox here. Accept, counter or decline drafts a reply. Nothing is sent until one of us approves it, and approving opens it in your email app. We aim to reply within 2 working days.</span></li>
       <li><b>Renewals</b><span>Placements ending in the next 90 days appear under Renewals due. Draft a reminder, edit it, approve it. An ended slot is held for its provider for 60 days, then opens.</span></li>
     </ol></section>`;
-  const kpi=`<section class="panel internal"><div class="phead"><h2>Inventory<span class="tag-internal">Team only</span></h2><span class="muted mono">${total} slots</span></div>
+  const kpi=`<section class="panel internal"><div class="phead"><h2>Inventory<span class="tag-internal">Admin only</span></h2><span class="muted mono">${total} slots</span></div>
     <div class="bar" aria-hidden="true"><i style="width:${pct(paid)}%;background:var(--taken)"></i><i style="width:${pct(inRen)}%;background:var(--coral)"></i><i style="width:${pct(res)}%;background:var(--amber)"></i><i style="width:${pct(open)}%;background:var(--accent)"></i></div>
     <div class="kpis">
       <div class="kpi"><div class="v">${pct(paid)}%</div><div class="l">Sold (${paid} slots)</div></div>
@@ -288,14 +290,14 @@ function teamPanels(){
       ${inv}
       ${o.note?`<div class="note">“${esc(o.note)}”</div>`:""}
       ${actionBlock(o,i)}</details>`};
-  const inbox=`<section class="panel internal"><div class="phead"><h2>Offers inbox<span class="tag-internal">Team only</span></h2><span class="muted">${openO.length} open</span></div>
+  const inbox=`<section class="panel internal"><div class="phead"><h2>Offers inbox<span class="tag-internal">Admin only</span></h2><span class="muted">${openO.length} open</span></div>
     <div class="queue">${openO.map(oCard).join("")||'<p class="muted" style="font-size:.9rem">No open offers. New ones appear here as soon as a provider sends one.</p>'}</div>
     ${doneO.length?`<details id="d-done" ${openD.has("d-done")?"open":""}><summary style="cursor:pointer;font-weight:600">Answered · ${doneO.length}</summary><div class="queue" style="margin-top:8px">${doneO.map(oCard).join("")}</div></details>`:""}</section>`;
-  const ren=`<section class="panel internal"><div class="phead"><h2>Renewals due<span class="tag-internal">Team only</span></h2><span class="muted">Next 90 days and recently ended</span></div>
+  const ren=`<section class="panel internal"><div class="phead"><h2>Renewals due<span class="tag-internal">Admin only</span></h2><span class="muted">Next 90 days and recently ended</span></div>
     <div class="queue">${provs.map(p=>{const L=byP[p];
       const total=L.reduce((t,x)=>t+priceOf(x.a,x.s.pos),0);
       const c=S.contracts[p];const groups={};L.forEach(x=>{const k=x.s.exp;(groups[k]=groups[k]||[]).push(x)});
-      const rem=REMS[p];const em=(PROVIDERS.find(x=>x.name===p)||{}).contact_email;
+      const rem=REMS[p];const em=emailsOf(p);
       const gl=Object.keys(groups).sort().map(k=>{const G=groups[k],e=D(k),past=e<TODAY;const hold=new Date(e);hold.setDate(hold.getDate()+60);
         return `<details class="rg"><summary><span class="pill ${past?"due":"soon"}">${past?"Ended "+fmtD(e):"Ends "+fmtD(e)}</span> ${G.length} ${G.length===1?"slot":"slots"}${past?" · held for them until "+fmtD(hold):""}</summary><p class="note" style="margin-top:6px">${G.map(x=>esc(x.a.name)+" "+(x.s.pos===1?"1st":"2nd")).join(", ")}</p></details>`}).join("");
       return `<div class="qi"><div class="h"><b>${esc(p)}</b><span class="muted" style="font-size:.84rem">${L.length} ${L.length===1?"slot":"slots"} to renew</span></div>
@@ -305,34 +307,33 @@ function teamPanels(){
         <div><span class="eyebrow">Same slots at list price</span><span>${eur(total)} a year${c&&c.current?` <span class="muted">(their contract is ${Math.round(c.current.monthly*12/total*100)}% of this)</span>`:""}</span></div>
       </div>
       <div class="rgs">${gl}</div>
-      ${drafts[p]!=null?`<textarea class="draft" id="rd-${slug(p)}" data-rd="${esc(p)}" rows="10" aria-label="Draft reminder to ${esc(p)}">${esc(drafts[p])}</textarea>${em?"":`<p class="note">No email saved for ${esc(p)}. Add it under Who has access.</p>`}`:""}
+      ${drafts[p]!=null?`<textarea class="draft" id="rd-${slug(p)}" data-rd="${esc(p)}" rows="10" aria-label="Draft reminder to ${esc(p)}">${esc(drafts[p])}</textarea>${em?"":`<p class="note">No one from ${esc(p)} is on the access list yet. Add them under Who has access.</p>`}`:""}
       <div class="acts">${drafts[p]!=null?`<button class="btn small primary" data-ap="${esc(p)}">Approve and open in email</button><button class="btn small ghost" data-rdx="${esc(p)}">Discard draft</button>`:`<button class="btn small" data-dr="${esc(p)}">Draft reminder</button>`}${rem&&rem.sent_at?`<span class="pill ok">Reminder sent ${fmtD(new Date(rem.sent_at))}</span>`:""}</div></div>`}).join("")||'<p class="muted" style="font-size:.9rem">Nothing ends in the next 90 days.</p>'}</div></section>`;
-  const prices=`<section class="panel internal"><div class="phead"><h2 class="dup">Prices and rules<span class="tag-internal">Team only</span></h2><span class="muted">Changes save straight away and show on every provider's page</span></div>
+  const prices=`<section class="panel internal"><div class="phead"><h2 class="dup">Prices and rules<span class="tag-internal">Admin only</span></h2><span class="muted">Changes save straight away and show on every provider's page</span></div>
     <div class="scroll"><table class="tbl"><thead><tr><th>Tier</th><th>Clicks a year</th><th>1st position</th><th>2nd position</th></tr></thead><tbody>
     ${S.tiers.map((t,i)=>`<tr><td><b>${esc(t.name)}</b></td><td class="muted">${esc(t.desc)}</td><td>€ <input id="t${i}p1" data-t="${i}|p1" type="number" min="0" value="${t.p1}"></td><td>€ <input id="t${i}p2" data-t="${i}|p2" type="number" min="0" value="${t.p2}"></td></tr>`).join("")}
     ${Object.keys(S.setPrices||{}).map(n=>`<tr><td><b>${esc(n)}</b></td><td class="muted">Set price, overrides its tier</td><td>€ <input id="sp-${slug(n)}" data-sp="${esc(n)}|p1" type="number" min="0" value="${S.setPrices[n].p1}"></td><td>${S.setPrices[n].p2!=null?`€ <input id="sp2-${slug(n)}" data-sp="${esc(n)}|p2" type="number" min="0" value="${S.setPrices[n].p2}">`:'<span class="muted">Tier price</span>'}</td></tr>`).join("")}
     <tr><td><b>Review article</b></td><td class="muted">Dedicated add-on</td><td colspan="2">€ <input id="rv" data-s="review" type="number" min="0" value="${S.review}"></td></tr>
     <tr><td><b>Package discount</b></td><td class="muted">Premium and Standard only</td><td colspan="2"><input id="dm" data-s="discMin" type="number" min="1" value="${S.discMin}"> slots or more get <input id="dp" data-s="discPct" type="number" min="0" max="50" value="${S.discPct}"> % off</td></tr>
     </tbody></table></div></section>`;
-  const base=location.origin+location.pathname;
-  const acc=`<section class="panel internal"><div class="phead"><h2 class="dup">Who has access<span class="tag-internal">Team only</span></h2></div>
-    <h3>Providers</h3>
-    <p class="note">Copy a provider's private link and send it to them. If a link gets passed around, make a new one: the old link stops working straight away.</p>
-    <div class="scroll"><table class="tbl"><thead><tr><th>Provider</th><th>Email for replies</th><th>Last visit</th><th>Private link</th><th>On</th></tr></thead><tbody>
-    ${PROVIDERS.map(p=>`<tr><td><b>${esc(p.name)}</b></td><td><input class="wide" type="email" data-pe="${esc(p.name)}" value="${esc(p.contact_email||"")}" placeholder="name@provider.com" aria-label="Email for ${esc(p.name)}"></td>
-      <td class="muted">${p.last_seen?fmtD(new Date(p.last_seen)):"Not yet"}</td>
-      <td><div class="linkcell"><button class="btn small" data-copy="${esc(base+"#k="+p.token)}" ${p.active?"":"disabled"}>Copy link</button><button class="btn small ghost" data-newlink="${p.id}">New link</button></div></td>
-      <td><input type="checkbox" data-act="${p.id}" ${p.active?"checked":""} aria-label="Link on for ${esc(p.name)}" style="width:auto"></td></tr>`).join("")}
+  const role=x=>x.provider?`Partner · ${esc(x.provider)}`:'<span class="tag-internal" style="margin:0">Admin</span>';
+  const acc=`<section class="panel internal"><div class="phead"><h2 class="dup">Who has access<span class="tag-internal">Admin only</span></h2></div>
+    <p class="note">Everyone signs in at partners.nomadwise.io with their email, and only emails on this list get a sign-in link. Partners see their own page, greeted by name. Admins see this view. Removing someone signs them out straight away.</p>
+    <div class="scroll"><table class="tbl"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last sign-in</th><th></th></tr></thead><tbody>
+    ${ACCESS.map(x=>`<tr><td><b>${esc(x.name||"")}</b></td><td>${esc(x.email)}</td><td>${role(x)}</td><td class="muted">${x.last_login?fmtD(new Date(x.last_login)):"Not yet"}</td>
+      <td><div class="linkcell"><button class="btn small" data-sendlink="${esc(x.email)}">Email sign-in link</button>${x.email===ME?"":`<button class="btn small ghost" data-rmacc="${esc(x.email)}">Remove</button>`}</div></td></tr>`).join("")}
     </tbody></table></div>
-    <form class="access-add" id="provform"><input id="np-name" placeholder="Provider name, e.g. Airalo" aria-label="Provider name" required><input id="np-email" type="email" placeholder="Their email (optional)" aria-label="Provider email"><button class="btn small primary" type="submit">Add provider</button></form>
-    <h3 style="margin-top:8px">Team</h3>
-    <p class="note">Anyone signed in with the Nomadwise Google account can use this view, plus these emails:</p>
-    <div class="chips">${TEAM.map(e=>`<span class="chip">${esc(e)} <button class="x" data-rmteam="${esc(e)}" aria-label="Remove ${esc(e)}" style="border:0;background:none;color:inherit;padding:0 0 0 4px">×</button></span>`).join("")||'<span class="muted" style="font-size:.86rem">None added yet.</span>'}</div>
-    <form class="access-add" id="teamform"><input id="nt-email" type="email" placeholder="Leonie's Google email" aria-label="Team email" required><button class="btn small" type="submit">Add to team</button></form>
-    <p class="note">Providers never see anything marked Team only.</p></section>`;
+    <form class="access-add" id="accform">
+      <input id="na-name" placeholder="Name, e.g. Simon Martin" aria-label="Name" required>
+      <input id="na-email" type="email" placeholder="name@company.com" aria-label="Email" required>
+      <select id="na-role" aria-label="Role"><option value="partner">Partner</option><option value="admin">Admin</option></select>
+      <select id="na-prov" aria-label="Partner company">${PROVIDERS.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join("")}<option value="__new">New partner company…</option></select>
+      <input id="na-co" placeholder="Company name, e.g. Airalo" aria-label="New partner company" hidden>
+      <button class="btn small primary" type="submit">Give access</button></form>
+    <p class="note">Giving access doesn't email anyone. Tell them to sign in at partners.nomadwise.io, or press Email sign-in link.</p></section>`;
   const order=["Top page"].concat(S.tiers.map(t=>t.name));const cg={};const capT=[0,0,0],openT=[0,0,0],cnt={};
   ARTS.forEach(a=>{const n=grp(a).name;cg[n]=cg[n]||[0,0,0];cnt[n]=(cnt[n]||0)+1;a.slots.forEach(s=>{const p=priceOf(a,s.pos);cg[n][s.pos]+=p;capT[s.pos]+=p;if(status(a,s,null).k==="available")openT[s.pos]+=p})});
-  const cap=`<section class="panel internal"><div class="phead"><h2>Capacity if 100% sold<span class="tag-internal">Team only</span></h2><span class="muted">At list prices, per year</span></div>
+  const cap=`<section class="panel internal"><div class="phead"><h2>Capacity if 100% sold<span class="tag-internal">Admin only</span></h2><span class="muted">At list prices, per year</span></div>
     <div class="kpis"><div class="kpi"><div class="v">${eur(capT[1])}</div><div class="l">All 1st positions</div></div><div class="kpi"><div class="v">${eur(capT[2])}</div><div class="l">All 2nd positions</div></div><div class="kpi"><div class="v">${eur(capT[1]+capT[2])}</div><div class="l">Total</div></div></div>
     <div class="scroll"><table class="tbl"><thead><tr><th>Tier</th><th>Articles</th><th>1st</th><th>2nd</th><th>Total</th></tr></thead><tbody>
     ${order.filter(n=>cg[n]).map(n=>`<tr><td><b>${esc(n)}</b></td><td class="mono">${cnt[n]}</td><td class="mono">${eur(cg[n][1])}</td><td class="mono">${eur(cg[n][2])}</td><td class="mono">${eur(cg[n][1]+cg[n][2])}</td></tr>`).join("")}
@@ -391,7 +392,7 @@ function inventoryPanel(v){
   const tiers=`<div class="tiers">${S.tiers.map(t=>`<div class="tier"><span class="n">${esc(t.name)}</span><span class="r">${esc(t.desc)}</span><div class="pp"><span class="pc"><span class="pl">1st</span><span class="pv">${eur(t.p1)}</span></span><span class="pc"><span class="pl">2nd</span><span class="pv">${eur(t.p2)}</span></span></div></div>`).join("")}</div>`;
   const regs=REGION_ORDER.filter(r=>ARTS.some(a=>regionOf[a.name]===r));
   return `<section class="panel"><div class="phead"><h2>${team?"All placements":"Available placements"}</h2><span class="muted">12-month term · prices per year</span></div>
-    ${team?`<p class="note">Views and clicks to eSIM providers over the last 12 months, measured on nomadwise.io. Click rate is clicks per page view. Team only: providers see the tier, not these figures.</p>`:""}
+    ${team?`<p class="note">Views and clicks to eSIM providers over the last 12 months, measured on nomadwise.io. Click rate is clicks per page view. Admin only: providers see the tier, not these figures.</p>`:""}
     ${tiers}
     <div class="legend"><span><i class="dot" style="background:var(--accent)"></i>Available</span><span><i class="dot" style="background:var(--mine)"></i>Yours</span><span><i class="dot" style="background:var(--amber)"></i>Reserved</span><span><i class="dot" style="background:var(--taken)"></i>Unavailable</span></div>
     <div class="regs" role="group" aria-label="Filter by region"><button class="reg" data-reg="" aria-pressed="${!filt.regions.size}">All regions</button>${regs.map(r=>`<button class="reg" data-reg="${esc(r)}" aria-pressed="${filt.regions.has(r)}">${esc(r)} <span class="mono">${ARTS.filter(a=>regionOf[a.name]===r).length}</span></button>`).join("")}</div>
@@ -436,7 +437,7 @@ function totals(){
 }
 
 function railPanel(v){
-  if(v===null) return `<section class="panel internal"><h3>Team view<span class="tag-internal">Team only</span></h3>
+  if(v===null) return `<section class="panel internal"><h3>Admin view<span class="tag-internal">Admin only</span></h3>
     <p class="muted" style="font-size:.9rem">Provider names and contract notes show in purple under each slot. Use “See a provider's page” at the top to check exactly what a provider sees.</p></section>`;
   const T=totals();
   if(submitted) return `<section class="panel" id="selp"><h2>Your offer</h2><div class="done"><b>Offer sent to Nomadwise${submitted.when?" on "+fmtD(new Date(submitted.when)):""}.</b><br>${submitted.items.length} ${submitted.items.length===1?"item":"items"}, offer ${eur(submitted.offer)}. We'll reply within 2 working days. You can send a new offer once we've answered this one.</div>
@@ -475,7 +476,7 @@ let saveT;
 function saveSettings(){
   clearTimeout(saveT);
   saveT=setTimeout(async()=>{const s=Object.assign({},S);delete s.contracts;
-    const {error}=await sb.rpc("partners_team_save_settings",{p_s:s});
+    const {error}=await sb.rpc("partners_team_save_settings",{p_session:SESSION,p_s:s});
     toast(error?"Couldn't save. Check your connection and try again.":"Saved. Provider pages now show the new prices.")},500);
 }
 async function submitOffer(items,list,amt,note,kind){
@@ -484,7 +485,7 @@ async function submitOffer(items,list,amt,note,kind){
     return true;
   }
   sending=true;render();
-  const {error}=await sb.rpc("partners_submit_offer",{p_token:TOKEN,p_kind:kind,p_items:items,p_list:list,p_offer:amt,p_note:note||""});
+  const {error}=await sb.rpc("partners_send_offer",{p_session:SESSION,p_kind:kind,p_items:items,p_list:list,p_offer:amt,p_note:note||""});
   sending=false;
   if(error){toast(error.message||"Couldn't send. Please try again.");render();return false}
   return true;
@@ -531,12 +532,12 @@ function bind(){
   document.querySelectorAll("[data-send]").forEach(el=>el.addEventListener("click",async()=>{const o=offers[+el.dataset.send];
     if(o.preview){o.sent=true;render();return}
     const st={accept:"accepted",counter:"countered",decline:"declined"}[o.action];
-    const {error}=await sb.rpc("partners_team_offer",{p_id:o.id,p_action:o.action,p_counter:o.action==="counter"?o.counterAmt:null,p_draft:o.draftText,p_status:st});
+    const {error}=await sb.rpc("partners_team_offer",{p_session:SESSION,p_id:o.id,p_action:o.action,p_counter:o.action==="counter"?o.counterAmt:null,p_draft:o.draftText,p_status:st});
     if(error){toast("Couldn't save: "+error.message);return}
     openMail(o.email,o.kind==="proposal"?"Your Nomadwise 2027 proposal":"Your Nomadwise placement offer",o.draftText);
     o.sent=true;o.decided=fmtD(TODAY)+" by "+ME;render()}));
   document.querySelectorAll("[data-undo]").forEach(el=>el.addEventListener("click",async()=>{const o=offers[+el.dataset.undo];
-    if(!o.preview){const {error}=await sb.rpc("partners_team_offer",{p_id:o.id,p_action:null,p_counter:null,p_draft:null,p_status:"new"});if(error){toast("Couldn't save: "+error.message);return}}
+    if(!o.preview){const {error}=await sb.rpc("partners_team_offer",{p_session:SESSION,p_id:o.id,p_action:null,p_counter:null,p_draft:null,p_status:"new"});if(error){toast("Couldn't save: "+error.message);return}}
     o.action=null;o.sent=false;o.counterDrafted=false;o.draftText=null;render()}));
   // team: reminders
   document.querySelectorAll("[data-rd]").forEach(el=>el.addEventListener("input",()=>{drafts[el.dataset.rd]=el.value}));
@@ -544,37 +545,31 @@ function bind(){
   document.querySelectorAll("[data-dr]").forEach(el=>el.addEventListener("click",()=>{const p=el.dataset.dr;
     const L=[];ARTS.forEach(a=>a.slots.forEach(s=>{const st=status(a,s,null);if(s.prov===p&&st.exp&&(st.due||st.soon))L.push({a,s,st})}));
     const first=L.reduce((m,x)=>x.st.exp<m?x.st.exp:m,L[0].st.exp);const past=first<TODAY;
-    drafts[p]=`Hi ${p} team,\n\nA quick heads-up that ${L.length} of your Nomadwise placements ${past?"have ended or end soon, the first on":"end soon, the first on"} ${fmtD(first)}.\n\nYou can see them all, with renewal prices and anything else that's open, on your private partner page. Tick what you'd like to keep and send us a package offer there, or just reply here.\n\nBest,\nJonathan`;
+    drafts[p]=`Hi ${namesOf(p).length?namesOf(p).join(" and "):p+" team"},\n\nA quick heads-up that ${L.length} of your Nomadwise placements ${past?"have ended or end soon, the first on":"end soon, the first on"} ${fmtD(first)}.\n\nYou can see them all, with renewal prices and anything else that's open, on your private partner page. Tick what you'd like to keep and send us a package offer there, or just reply here.\n\nBest,\nJonathan`;
     render()}));
   document.querySelectorAll("[data-ap]").forEach(el=>el.addEventListener("click",async()=>{const p=el.dataset.ap;const text=drafts[p];
-    const {error}=await sb.rpc("partners_team_reminder",{p_provider:p,p_draft:text,p_sent:true});
+    const {error}=await sb.rpc("partners_team_reminder",{p_session:SESSION,p_provider:p,p_draft:text,p_sent:true});
     if(error){toast("Couldn't save: "+error.message);return}
-    openMail((PROVIDERS.find(x=>x.name===p)||{}).contact_email,"Your Nomadwise placements",text);
+    openMail(emailsOf(p),"Your Nomadwise placements",text);
     REMS[p]={sent_at:new Date().toISOString()};delete drafts[p];render()}));
   // team: access
-  document.querySelectorAll("[data-copy]").forEach(el=>el.addEventListener("click",async()=>{try{await navigator.clipboard.writeText(el.dataset.copy);toast("Link copied")}catch(e){prompt("Copy this link",el.dataset.copy)}}));
-  document.querySelectorAll("[data-newlink]").forEach(el=>el.addEventListener("click",async()=>{
-    if(!el.dataset.sure){el.dataset.sure="1";el.textContent="Old link stops working. Sure?";return}
-    const {error}=await sb.rpc("partners_team_provider_set",{p_id:el.dataset.newlink,p_active:null,p_new_link:true});
-    if(error){toast("Couldn't save: "+error.message);return}toast("New link made. Copy it and send it on.");reloadTeam()}));
-  document.querySelectorAll("[data-act]").forEach(el=>el.addEventListener("change",async()=>{
-    const {error}=await sb.rpc("partners_team_provider_set",{p_id:el.dataset.act,p_active:el.checked,p_new_link:false});
-    if(error){toast("Couldn't save: "+error.message);return}toast(el.checked?"Link switched on":"Link switched off");reloadTeam()}));
-  document.querySelectorAll("[data-pe]").forEach(el=>el.addEventListener("change",async()=>{
-    const {error}=await sb.rpc("partners_team_provider_save",{p_name:el.dataset.pe,p_email:el.value});
-    if(error){toast("Couldn't save: "+error.message);return}toast("Email saved");reloadTeam()}));
-  const pf=$("provform");if(pf)pf.addEventListener("submit",async e=>{e.preventDefault();
-    const {error}=await sb.rpc("partners_team_provider_save",{p_name:$("np-name").value,p_email:$("np-email").value});
-    if(error){toast(error.message);return}toast("Provider added. Copy their link below.");openD.add("d-acc");reloadTeam()});
-  const tf=$("teamform");if(tf)tf.addEventListener("submit",async e=>{e.preventDefault();
-    const {error}=await sb.rpc("partners_team_member",{p_email:$("nt-email").value,p_add:true});
-    if(error){toast(error.message);return}toast("Added to the team");openD.add("d-acc");reloadTeam()});
-  document.querySelectorAll("[data-rmteam]").forEach(el=>el.addEventListener("click",async()=>{
-    const {error}=await sb.rpc("partners_team_member",{p_email:el.dataset.rmteam,p_add:false});
-    if(error){toast(error.message);return}reloadTeam()}));
+  const nr=$("na-role"),np=$("na-prov");
+  const sync=()=>{if(!nr)return;np.hidden=nr.value!=="partner";$("na-co").hidden=nr.value!=="partner"||np.value!=="__new"};
+  if(nr){nr.addEventListener("change",sync);np.addEventListener("change",sync);sync()}
+  const af=$("accform");if(af)af.addEventListener("submit",async e=>{e.preventDefault();
+    let prov=null;if(nr.value==="partner"){prov=np.value==="__new"?$("na-co").value.trim():np.value;if(!prov){toast("Add the company name");return}}
+    const {error}=await sb.rpc("partners_team_access",{p_session:SESSION,p_name:$("na-name").value,p_email:$("na-email").value,p_provider:prov,p_action:"add"});
+    if(error){toast(error.message);return}toast("Access given. They can now sign in with that email.");openD.add("d-acc");reloadTeam()});
+  document.querySelectorAll("[data-sendlink]").forEach(el=>el.addEventListener("click",async()=>{
+    const {error}=await sb.rpc("partners_team_access",{p_session:SESSION,p_name:null,p_email:el.dataset.sendlink,p_provider:null,p_action:"send"});
+    toast(error?error.message:"Sign-in link sent to "+el.dataset.sendlink)}));
+  document.querySelectorAll("[data-rmacc]").forEach(el=>el.addEventListener("click",async()=>{
+    if(!el.dataset.sure){el.dataset.sure="1";el.textContent="Sure? Remove";return}
+    const {error}=await sb.rpc("partners_team_access",{p_session:SESSION,p_name:null,p_email:el.dataset.rmacc,p_provider:null,p_action:"remove"});
+    if(error){toast(error.message);return}toast("Removed");reloadTeam()}));
 }
 
 $("mbar-b").addEventListener("click",()=>{const p=$("selp");if(p)p.scrollIntoView({behavior:"smooth"})});
-window.addEventListener("hashchange",()=>{if(parseToken()!==TOKEN)location.reload()});
+window.addEventListener("hashchange",()=>{if(/login=/.test(location.hash))location.reload()});
 boot().catch(e=>message("Something went wrong",String(e&&e.message||e)));
 })();
