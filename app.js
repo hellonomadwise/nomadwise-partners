@@ -427,7 +427,7 @@ function render(){
     <div class="stat"><span class="v">${totalClicks.toLocaleString("en-GB")}</span><span class="l">clicks to providers</span></div>
     ${v===null?`<div class="stat"><span class="v">${totalViews?(totalClicks/totalViews*100).toFixed(1):"0"}%</span><span class="l">blended click rate</span></div>`:""}`;
   OPEN_NOW=av;
-  $("main").innerHTML=(v===null?teamPanels():"")+(v!==null&&v!=="__new"?currentPanel(v):"")+inventoryPanel(v)+(v===null?"":addonPanel())+bidBox();
+  $("main").innerHTML=(v===null?teamPanels():"")+(v!==null&&v!=="__new"?currentPanel(v):"")+inventoryPanel(v)+(v===null?"":addonPanel())+bidBox()+(v===null?glanceModal():"");
   $("rail").innerHTML=railPanel(v);
   bind();
   mbar();
@@ -770,14 +770,7 @@ function teamPanels(){
         ${c?`<div><span class="eyebrow">Our 2027 proposal</span><b class="mono">${eur(propY)}</b><span class="muted">${eur(c.base)} a month core · ${eur(propY/L.length)} per article${nowY?" · "+(propY>=nowY?"+":"")+pc(propY/nowY-1)+"% on the €"+c.current.monthly+" a month now":""}</span><span class="pill ${propY<total?"due":"ok"}" style="justify-self:start">${propY<total?pc(1-propY/total)+"% below list":"at or above list"}</span></div>`:""}
         <div><span class="eyebrow">Their sales on these, 12 months</span><b class="mono">${eur(SS.v)}</b><span class="muted">${SS.n} sales · our commission ${eur(SS.c)}</span>${payY?`<span class="muted">${(SS.v/payY).toFixed(1)}× what they pay us</span>`:""}</div>
         ${RN.length?`<div class="${netT<0?"kneg":"kpos"}"><span class="eyebrow">Their result</span><b class="mono ${netT<0?"neg":"pos"}">${netT<0?"-":"+"}${eur(Math.abs(netT))}</b><span class="muted">${posN} of ${RN.length} articles made them money after ${payY?"their fee":"what they paid"} and our commission</span><span class="muted">We earned ${eur(feeT+commT)} (${eur(feeT)} ${payY?"fee":"paid"} + ${eur(commT)} commission)</span></div>`:""}
-        ${c&&c.pricing==="fixed"?(()=>{const weak=R.filter(r=>netOf(r)!=null).sort((u,w)=>netOf(u)-netOf(w)).slice(0,5);
-          const win=new Date(D(c.contractEnd));win.setDate(win.getDate()+31);
-          const held=new Set(ARTS.filter(a=>a.slots[0].prov===p&&holdsNow(a.slots[0])).map(a=>a.name));
-          const free=ARTS.filter(a=>!held.has(a.name)&&!(c.options||[]).includes(a.name)).filter(a=>{const s=a.slots[0];if(!s.prov||!s.exp)return true;const e=D(s.exp);if(days(e,TODAY)<-60)return true;const nx=new Date(e);nx.setDate(nx.getDate()+1);return nx<=win}).map(a=>({a,v:+((a.sales||{}).v1)||0})).sort((x,y)=>y.v-x.v).slice(0,5);
-          return `<div class="ksug"><span class="eyebrow">Renewal plan</span><b class="mono">Hold €${c.current?c.current.monthly:c.base} a month</b><span class="muted">Same price, swap the weakest articles for stronger free ones, optional extras on top.</span>
-          <span class="muted"><strong style="color:var(--ink);font-size:inherit">Weakest for them:</strong> ${weak.map(r=>esc(r.x.a.name)+" "+eurS(netOf(r))).join(", ")}</span>
-          <span class="muted"><strong style="color:var(--ink);font-size:inherit">Best free to swap in:</strong> ${free.map(x=>esc(x.a.name)+" ("+eur(x.v)+")").join(", ")}</span>
-          <span class="muted">Model it in the Proposal builder, then share it so ${esc(p)} can swap too.</span></div>`})():`<div class="ksug"><span class="eyebrow">Suggested renewal</span><b class="mono">${eur(SG.s)} a year</b>${payY?`<span class="muted">${eur(SG.s/12)} a month</span>`:""}
+        ${c&&c.pricing==="fixed"?`<div class="kplan"><span class="eyebrow">Renewal plan</span><b>Hold €${c.current?c.current.monthly:c.base} a month</b><span class="muted">Same price, weak articles swapped for stronger free ones, optional extras on top.</span><button class="btn small primary" data-bestfor="${esc(p)}">Build the best proposal</button></div>`:`<div class="ksug"><span class="eyebrow">Suggested renewal</span><b class="mono">${eur(SG.s)} a year</b>${payY?`<span class="muted">${eur(SG.s/12)} a month</span>`:""}
           <span class="muted">${(nowY||T.paid)?`${SG.s>=(nowY||T.paid)?"+":""}${pc(SG.s/(nowY||T.paid)-1)}% on what they ${nowY?"pay now (€"+eur(nowY).slice(1)+" a year)":"paid last time"} · `:""}${pc(SG.s/total)}% of list</span>
           <span class="muted">At this price they'd make ${(SG.v-SG.s-SG.c)<0?"-":"+"}${eur(Math.abs(SG.v-SG.s-SG.c))} and we'd earn ${eur(SG.s+SG.c)}, on last year's sales</span>
           <span class="muted">${SG.atL} at list · ${SG.atF} at the lowest price · rest priced on their sales</span></div>`}
@@ -810,7 +803,13 @@ function teamPanels(){
       <select id="na-prov" aria-label="Partner company">${PROVIDERS.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join("")}<option value="__new">New partner company…</option></select>
       <input id="na-co" placeholder="Company name, e.g. Airalo" aria-label="New partner company" hidden>
       <button class="btn small primary" type="submit">Give access</button></form>
-    <p class="note">Giving access doesn't email anyone. Tell them to sign in at partners.nomadwise.io, or press Email sign-in link.</p></section>`;
+    <p class="note">Giving access doesn't email anyone. Tell them to sign in at partners.nomadwise.io, or press Email sign-in link.</p></section>
+    <section class="panel internal"><div class="phead"><h2 class="dup">What they're looking for</h2></div>
+    <p class="note">Note what each partner told you on a call. Their page then shows "Picked for you" from these, best sellers first. Without it, they see our most read guides with a slot open. Each partner only ever sees their own.</p>
+    <div class="ints">${PROVIDERS.map(p=>{const I=interestOf(p.name);return `<div class="int"><b>${esc(p.name)}</b>
+      <div class="int-r">${REGION_ORDER.filter(r=>ARTS.some(a=>regionOf[a.name]===r)).map(r=>`<button class="ichip${I.regions.includes(r)?" on":""}" data-intr="${esc(p.name)}|${esc(r)}" aria-pressed="${I.regions.includes(r)}">${esc(r)}</button>`).join("")}</div>
+      <input class="int-a" data-inta="${esc(p.name)}" list="int-arts" placeholder="Specific articles, comma separated, e.g. Japan, Thailand" value="${esc(I.articles.join(", "))}" aria-label="Articles ${esc(p.name)} is interested in"></div>`}).join("")}</div>
+    <datalist id="int-arts">${ARTS.map(a=>`<option value="${esc(a.name)}">`).join("")}</datalist></section>`;
   const order=["Top page"].concat(S.tiers.map(t=>t.name));const cg={};const capT=[0,0,0],openT=[0,0,0],cnt={};
   ARTS.forEach(a=>{const n=grp(a).name;cg[n]=cg[n]||[0,0,0];cnt[n]=(cnt[n]||0)+1;a.slots.forEach(s=>{const p=priceOf(a,s.pos);cg[n][s.pos]+=p;capT[s.pos]+=p;if(status(a,s,null).k==="available")openT[s.pos]+=p})});
   const cap=`<section class="panel internal"><div class="phead"><h2>Capacity if 100% sold<span class="tag-internal">Admin only</span></h2><span class="muted">At list prices, per year</span></div>
@@ -905,13 +904,17 @@ function currentPanel(v){
 const salesBit=(label,n,v,c,brands)=>`<span title="${esc((brands||[]).map(x=>x.b+": "+x.n+" sales, "+eur(x.v)).join("\n")+(c!=null?"\nOur commission: "+eur(c):""))}">${label} ${n||0} (${eur(v||0)})</span>`;
 // A slot a partner can do something with right now: book it, renew it, or make an offer
 function actionable(a,s,v){const st=status(a,s,v);return (st.k==="available"&&st.sel)||(st.k==="mine"&&!st.contract&&(st.soon||st.due||st.fr))||!!st.bid}
-function myRegions(v){const r=new Set();ARTS.forEach(a=>a.slots.forEach(s=>{if(s.prov===v||status(a,s,v).k==="mine")r.add(regionOf[a.name])}));return r}
+function myRegions(v){const r=new Set(interestOf(v).regions);ARTS.forEach(a=>a.slots.forEach(s=>{if(s.prov===v||status(a,s,v).k==="mine")r.add(regionOf[a.name])}));return r}
+// What a partner told us they want (set by the team after a call), only ever their own
+const interestOf=v=>{const I=((S.interests||{})[v])||{};return {regions:I.regions||[],articles:I.articles||[]}};
+const hasInterest=v=>{const I=interestOf(v);return I.regions.length+I.articles.length>0};
 function picksFor(v){
-  const mine=myRegions(v),seen=new Set(),out=[];
-  const order=POPULAR.map(n=>ARTS.find(a=>a.name===n)).filter(Boolean);
+  const I=interestOf(v),told=hasInterest(v),seen=new Set();
+  const order=POPULAR.map(n=>ARTS.find(a=>a.name===n)).filter(Boolean).concat(ARTS);
   const cand=[];order.forEach(a=>{if(seen.has(a.name))return;seen.add(a.name);
-    const s=a.slots.find(s=>{const st=status(a,s,v);return st.k==="available"&&st.sel});if(s)cand.push({a,s,mine:mine.has(regionOf[a.name])})});
-  cand.sort((x,y)=>(y.mine-x.mine));return cand.slice(0,6);
+    const s=a.slots.find(s=>{const st=status(a,s,v);return st.k==="available"&&st.sel});if(!s)return;
+    const score=I.articles.includes(a.name)?2:(I.regions.includes(regionOf[a.name])?1:0);if(told&&!score)return;cand.push({a,s,score})});
+  cand.sort((x,y)=>y.score-x.score);return cand.slice(0,6);
 }
 function regionSelect(v,team){
   const mine=team?new Set():myRegions(v);const act=!team&&!filt.all;
@@ -942,7 +945,7 @@ function inventoryPanel(v){
       ${team?(()=>{const cnt={};ARTS.forEach(a=>a.slots.forEach(s=>{if(holdsNow(s))cnt[s.prov]=(cnt[s.prov]||0)+1}));const ps=Object.keys(cnt).sort((x,y)=>cnt[y]-cnt[x]||x.localeCompare(y));
         return `<select id="f-prov" aria-label="Provider"><option value="">All providers</option>${ps.map(p=>`<option value="${esc(p)}" ${filt.prov===p?"selected":""}>${esc(p)} · ${cnt[p]}</option>`).join("")}</select>${filt.prov?`<select id="f-ppos" aria-label="Position"><option value="">1st or 2nd</option><option value="1" ${filt.ppos==="1"?"selected":""}>1st only</option><option value="2" ${filt.ppos==="2"?"selected":""}>2nd only</option></select>`:""}`})():""}</div>
     ${team?`<p class="showing">${filt.all||filt.q||filt.prov||filt.tier?`Showing ${filt.all?"all ":""}${list.length} ${list.length===1?"article":"articles"}.${filt.all?` <button class="lnk" id="f-all" data-all="0">Show only what's coming up</button>`:""}`:`Showing ${list.length} ${list.length===1?"article":"articles"} with something coming up: a slot ending in the next 60 days, in renewal, or with an offer in. <button class="lnk" id="f-all" data-all="1">Show all ${ARTS.length}</button>`}</p>`:`<p class="showing">${filt.all?`Showing all ${ARTS.length} articles. <button class="lnk" id="f-all" data-all="0">Show only what you can book, renew or bid on</button>`:`Showing ${list.length} ${list.length===1?"article":"articles"} you can book, renew or make an offer on. <button class="lnk" id="f-all" data-all="1">Show all ${ARTS.length}</button>`}</p>`}
-    ${!team&&!filt.q&&!filt.region&&!filt.tier&&!submitted?(()=>{const P=picksFor(v);return P.length?`<div class="picks"><h3>Picked for you <span class="muted" style="font-weight:500;font-size:.86rem">· popular articles with a slot open now${myRegions(v).size?", your regions first":""}</span></h3><div class="pick-row">${P.map(({a,s})=>{const k=key(a,s.pos),on=sel.has(k);return `<button class="pick${on?" on":""}" data-k="${esc(k)}" aria-pressed="${on}"><span class="pn">${esc(a.name)}</span><span class="pm">${s.pos===1?"1st":"2nd"} · ${esc(grp(a).name)}</span><span class="pp"><b class="mono">${eur(priceOf(a,s.pos))}</b><span>${on?"Added ✓":"+ Add"}</span></span></button>`}).join("")}</div></div>`:""})():""}
+    ${!team&&!filt.q&&!filt.region&&!filt.tier&&!submitted?(()=>{const P=picksFor(v);return P.length?`<div class="picks"><h3>${hasInterest(v)?`Picked for you <span class="muted" style="font-weight:500;font-size:.86rem">· open now, from what you told us you're looking for</span>`:`Most read, open now <span class="muted" style="font-weight:500;font-size:.86rem">· our busiest guides with a slot free</span>`}</h3><div class="pick-row">${P.map(({a,s})=>{const k=key(a,s.pos),on=sel.has(k);return `<button class="pick${on?" on":""}" data-k="${esc(k)}" aria-pressed="${on}"><span class="pn">${esc(a.name)}</span><span class="pm">${s.pos===1?"1st":"2nd"} · ${esc(grp(a).name)}</span><span class="pp"><b class="mono">${eur(priceOf(a,s.pos))}</b><span>${on?"Added ✓":"+ Add"}</span></span></button>`}).join("")}</div></div>`:""})():""}
     <div class="rows">${list.map(a=>{const t=tierOf(a);const g=grp(a).name;const head=g!==lastG?`<div class="ghead"><span>${esc(g)} group</span><span class="gn">${list.filter(x=>grp(x).name===g).length} ${list.filter(x=>grp(x).name===g).length===1?"article":"articles"}</span></div>`:"";lastG=g;
       return head+`<div class="row${team&&GEXP.has(a.name)?" open":""}"><div class="art">${team?`<button class="nm nmb" data-gx="${esc(a.name)}" aria-expanded="${GEXP.has(a.name)}">${esc(a.name)} <span class="tchip">${esc(g)}</span></button>`:`<span class="nm">${esc(a.name)}</span>`}<span class="meta">${team?teamMeta(a,t,g):`<span class="tchip ${(S.setPrices||{})[a.name]?"Premium":esc(t.name)}">${esc(g)}</span>`}</span></div>
       <div class="seats">${a.slots.map(s=>seat(a,s,v,team)).join("")}</div>${team&&GEXP.has(a.name)?rowDetail(a,t,g):""}</div>`}).join("")||'<p class="muted">No articles match.</p>'}</div></section>`;
@@ -950,6 +953,45 @@ function inventoryPanel(v){
 
 // Admin rows: tier chip (tap to change), then views, clicks and sales on one quiet line
 let GEDIT=null, OPEN_NOW=[0,0,0]; const GEXP=new Set();
+// ---------- At a glance: tap a number to see what's behind it ----------
+let GLANCE=null;
+function glanceSlots(kind){const out=[];
+  ARTS.forEach(a=>a.slots.forEach(s=>{if(!s.prov||!s.exp||s.flag==="E")return;const e=D(s.exp),d=days(e,TODAY);
+    if(kind==="renewal"&&d<0&&d>=-60)out.push({a,s,e,d,by:(()=>{const x=new Date(e);x.setDate(x.getDate()+60);return x})()});
+    if(kind==="ending"&&d>=0&&d<=60)out.push({a,s,e,d,by:e})}));
+  return out}
+function glanceRow(x){const {a,s}=x,pos=s.pos,pl=pos===1?"1st":"2nd",c=S.contracts[s.prov];
+  const sl=a.sales||{},n=+sl["s"+pos]||0,v=+sl["v"+pos]||0,com=+sl["c"+pos]||0;
+  const pay=PAYMENTS.filter(p=>p.provider===s.prov&&p.article===a.name&&+p.pos===pos).sort((u,w)=>String(w.invoiced_on||"").localeCompare(String(u.invoiced_on||"")))[0];
+  const paid=c&&s.exp===c.contractEnd?"in their monthly deal · ":(pay?"paid "+eur(pay.paid)+" last time · ":"");
+  const bids=offers.filter(o=>o.kind==="bid"&&o.status==="new"&&!o.sent&&o.items[0]===a.name+" · "+pl);
+  const fam=famHead(a.name),famTxt=fam&&fam!==a.name?"goes with "+fam:"";
+  return `<li class="gr"><div class="gr-a"><b>${esc(a.name)} ${pl}</b> <span class="tchip">${esc(grp(a).name)}</span>${famTxt?` <span class="muted">· ${esc(famTxt)}</span>`:""}</div>
+    <div class="gr-m"><span>${v?`made them <b>${eur(v)}</b> <span class="muted">(${n} ${n===1?"sale":"sales"} · our commission ${eur(com)})</span>`:'<span class="muted">no sales tracked</span>'}</span><span class="muted">${paid}list ${eur(priceOf(a,pos))}</span>
+    ${bids.length?`<span class="pill soon">${bids.length} takeover ${bids.length===1?"offer":"offers"}, top ${eur(Math.max(...bids.map(b=>b.offer)))}</span>`:""}</div></li>`}
+function glanceModal(){if(!GLANCE)return "";const k=GLANCE;
+  let title="",intro="",body="",foot="";
+  if(k==="renewal"||k==="ending"){
+    const L=glanceSlots(k),byP={};L.forEach(x=>{(byP[x.s.prov]=byP[x.s.prov]||[]).push(x)});
+    const ps=Object.keys(byP).sort((p,q)=>Math.min(...byP[p].map(x=>x.by))-Math.min(...byP[q].map(x=>x.by)));
+    const listV=L.reduce((t,x)=>t+priceOf(x.a,x.s.pos),0),first=L.length?new Date(Math.min(...L.map(x=>x.by))):null;
+    title=k==="renewal"?L.length+" slots in renewal":L.length+" slots ending in the next 60 days";
+    intro=k==="renewal"?`Their placement has ended and we're holding the slot while they decide. ${ps.length} ${ps.length===1?"partner":"partners"}, ${eur(listV)} a year at list.${first?` First to decide by <b>${fmtD(first)}</b>.`:""}`
+      :`Still live, ending soon. ${ps.length} ${ps.length===1?"partner":"partners"}, ${eur(listV)} a year at list.${first?` First ends <b>${fmtD(first)}</b>.`:""}`;
+    body=ps.map(p=>{const xs=byP[p].sort((u,w)=>u.by-w.by),by=xs[0].by,dl=days(by,TODAY),c=S.contracts[p];
+      const when=k==="renewal"?`decide by ${fmtD(by)} · ${dl} days left`:`ends ${fmtD(by)} · in ${dl} days`;
+      const mv=xs.reduce((t,x)=>t+(+((x.a.sales||{})["v"+x.s.pos])||0),0);
+      return `<div class="gp"><div class="gp-h"><b>${esc(p)}</b><span class="muted">${xs.length} ${xs.length===1?"slot":"slots"} · made them ${eur(mv)}</span><span class="pill ${dl<=21?"due":"soon"}">${when}</span>${c?'<span class="muted">monthly contract</span>':""}<button class="lnk" data-gren="${esc(p)}">Open their renewal ›</button></div><ul>${xs.map(glanceRow).join("")}</ul></div>`}).join("")||'<p class="muted">Nothing here right now.</p>';
+    foot="Prices, what they made and reminders are in Renewals due.";
+  }else{const pos=k==="open1"?1:2,pl=pos===1?"1st":"2nd";
+    const L=ARTS.map(a=>({a,s:a.slots[pos-1],st:status(a,a.slots[pos-1],null)})).filter(x=>x.st.k==="available").map(x=>({...x,v:+((x.a.sales||{})["v"+pos])||0,fr:frActive(x.a,x.s)}));
+    L.sort((x,y)=>y.v-x.v||y.a.clicks-x.a.clicks);
+    title=L.length+" "+pl+" positions open";intro=`Free to book now, best sellers first. "Sales" is what the ${pl} position there sold in 12 months, whoever was showing. ${eur(L.reduce((t,x)=>t+priceOf(x.a,pos),0))} a year at list if all were sold.`;
+    body=`<ul>${L.slice(0,25).map(x=>`<li class="gr"><div class="gr-a"><b>${esc(x.a.name)}</b> <span class="tchip">${esc(grp(x.a).name)}</span>${x.fr?` <span class="pill fr">${esc(x.fr)} first refusal</span>`:""}</div><div class="gr-m"><span>${x.v?"sales <b>"+eur(x.v)+"</b>":'<span class="muted">no sales tracked</span>'} <span class="muted">· ${x.a.clicks.toLocaleString("en-GB")} clicks</span></span><span class="mono">${eur(priceOf(x.a,pos))}</span></div></li>`).join("")}</ul>${L.length>25?`<p class="muted" style="font-size:.86rem">And ${L.length-25} more with fewer sales. Use Show all in All placements to see them.</p>`:""}`;
+    foot="Partners see these as Available on their page.";}
+  return `<div class="modal" data-gclose="1" role="dialog" aria-modal="true" aria-labelledby="gl-t"><div class="modal-in gmodal">
+    <div class="gm-h"><h2 id="gl-t">${title}</h2><button class="x" data-gclose="1" aria-label="Close">×</button></div>
+    <p class="muted" style="font-size:.9rem">${intro}</p><div class="gm-b">${body}</div><p class="note">${foot}</p></div></div>`}
 // Admin: is anything happening on this article soon?
 function comingUp(a){return a.slots.some(s=>{if(!s.prov||!s.exp||s.flag==="E")return false;const d=days(D(s.exp),TODAY);return d<=60&&d>=-60})||offers.some(o=>o.status==="new"&&!o.sent&&o.items.some(it=>String(it).startsWith(a.name+" · ")))}
 // Admin: the extra detail under a row, only when asked for
@@ -1027,10 +1069,10 @@ function railPanel(v){
   if(v===null){const openO=offers.filter(o=>o.status==="new"&&!o.sent).length;
     let ren=0,soon=0;ARTS.forEach(a=>a.slots.forEach(s=>{if(!s.prov||!s.exp||s.flag==="E")return;const d=days(D(s.exp),TODAY);if(d<0&&d>=-60)ren++;else if(d>=0&&d<=60)soon++}));
     const wk=ACT_EV.filter(e=>e.kind==="visit"&&new Date(e.at)>new Date(Date.now()-7*864e5)).length;
-    const g=(n,l,sub)=>`<div class="glance"><span class="gv">${n}</span><span class="gl">${l}${sub?`<small>${sub}</small>`:""}</span></div>`;
+    const g=(n,l,sub,act)=>`<button class="glance" data-glance="${act}" ${n?"":"disabled"}><span class="gv">${n}</span><span class="gl">${l}${sub?`<small>${sub}</small>`:""}</span>${n?'<span class="gx" aria-hidden="true">›</span>':""}</button>`;
     return `<section class="panel"><h3 style="margin-bottom:8px">At a glance</h3>
-      ${g(openO,openO===1?"offer waiting":"offers waiting")}${g(ren,"slots in renewal","ended, held up to 60 days")}${g(soon,"slots ending","in the next 60 days")}
-      ${g(OPEN_NOW[1]+" · "+OPEN_NOW[2],"open now","1st · 2nd")}${g(wk,wk===1?"partner visit":"partner visits","this week")}
+      ${g(openO,openO===1?"offer waiting":"offers waiting","","offers")}${g(ren,"slots in renewal","ended, held up to 60 days","renewal")}${g(soon,"slots ending","in the next 60 days","ending")}
+      ${g(OPEN_NOW[1],"1st positions open","free to book now","open1")}${g(OPEN_NOW[2],"2nd positions open","free to book now","open2")}${g(wk,wk===1?"partner visit":"partner visits","this week","visits")}
       <p class="note" style="margin-top:8px">To see exactly what a partner sees, pick them at the top and press Open their page.</p></section>`}
   const T=totals();
   if(submitted) return `<section class="panel" id="selp"><h2>Your request</h2><div class="done"><b>Sent to Nomadwise${submitted.when?" on "+fmtD(new Date(submitted.when)):""}.</b><br>${submitted.items.length} ${submitted.items.length===1?"item":"items"}, package price ${eur(submitted.offer)}. We'll reply within 2 working days. You can send another once we've answered this one.</div>
@@ -1119,6 +1161,7 @@ function bind(){
   document.querySelectorAll("[data-pbop]").forEach(el=>el.addEventListener("change",()=>{PB.optPrice[el.dataset.pbop]=Math.max(0,+el.value||0);pbSave();render()}));
   document.querySelectorAll("[data-pba]").forEach(el=>el.addEventListener("change",()=>{pbFam(el.dataset.pba,el.checked);pbSave();render()}));
   const pbr=$("pb-reset");if(pbr)pbr.addEventListener("click",()=>{const p=PB.p;delete SCEN[p];PB=pbInit(p);pbSave();render()});
+  document.querySelectorAll("[data-bestfor]").forEach(el=>el.addEventListener("click",()=>{const p=el.dataset.bestfor;if(!PB||PB.p!==p)PB=pbInit(p);openD.add("d-pb");pbBest();setTimeout(()=>{const d=$("d-pb");if(d)d.scrollIntoView({behavior:"smooth",block:"start"})},50)}));
   const pbb=$("pb-best");if(pbb)pbb.addEventListener("click",pbBest);
   const pbs5=$("pb-swap5");if(pbs5)pbs5.addEventListener("click",()=>{const p=PB.p,c=S.contracts[p];
     const kept=PB.cur.filter(n=>PB.keep.has(n)).map(n=>ARTS.find(a=>a.name===n)).filter(Boolean);
@@ -1207,6 +1250,19 @@ function bind(){
   const peq=$("pe-q");if(peq)peq.addEventListener("input",()=>{peQ=peq.value;const pos=peq.selectionStart;render();const n=$("pe-q");if(n){n.focus();n.setSelectionRange(pos,pos)}});
   const per=$("pe-reset");if(per)per.addEventListener("click",()=>{PE=null;render()});
   // team: move an article to another group
+  document.querySelectorAll("[data-glance]").forEach(el=>el.addEventListener("click",()=>{const k=el.dataset.glance;
+    if(k==="offers"){const s=document.querySelector(".queue .qi");(s||document.querySelector("#main .panel")).scrollIntoView({behavior:"smooth",block:"start"});return}
+    if(k==="visits"){openD.add("d-act");render();setTimeout(()=>{const d=$("d-act");if(d)d.scrollIntoView({behavior:"smooth",block:"start"})},30);return}
+    GLANCE=k;render()}));
+  document.querySelectorAll("[data-gclose]").forEach(el=>el.addEventListener("click",e=>{if(e.target!==el)return;GLANCE=null;render()}));
+  document.querySelectorAll("[data-gren]").forEach(el=>el.addEventListener("click",()=>{const id="rn-"+slug(el.dataset.gren);GLANCE=null;openD.add(id);render();setTimeout(()=>{const d=$(id);if(d)d.scrollIntoView({behavior:"smooth",block:"start"})},30)}));
+  if(GLANCE&&!bind._esc){bind._esc=true;document.addEventListener("keydown",e=>{if(e.key==="Escape"&&GLANCE){GLANCE=null;render()}})}
+  const intSave=()=>saveSettings("Saved. Their page now picks from this.");
+  document.querySelectorAll("[data-intr]").forEach(el=>el.addEventListener("click",()=>{const [p,r]=el.dataset.intr.split("|");S.interests=S.interests||{};const I=S.interests[p]=S.interests[p]||{regions:[],articles:[]};I.regions=I.regions||[];
+    I.regions=I.regions.includes(r)?I.regions.filter(x=>x!==r):I.regions.concat([r]);openD.add("d-acc");intSave();render()}));
+  document.querySelectorAll("[data-inta]").forEach(el=>el.addEventListener("change",()=>{const p=el.dataset.inta;S.interests=S.interests||{};const I=S.interests[p]=S.interests[p]||{regions:[],articles:[]};
+    const names=el.value.split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);I.articles=ARTS.filter(a=>names.includes(a.name.toLowerCase())).map(a=>a.name);
+    const miss=names.filter(n=>!ARTS.some(a=>a.name.toLowerCase()===n));if(miss.length)toast("Not found: "+miss.join(", "));openD.add("d-acc");intSave();render()}));
   document.querySelectorAll("[data-gx]").forEach(el=>el.addEventListener("click",()=>{const n=el.dataset.gx;if(GEXP.has(n))GEXP.delete(n);else GEXP.add(n);render()}));
   document.querySelectorAll("[data-gedit]").forEach(el=>el.addEventListener("click",()=>{GEDIT=el.dataset.gedit;render();const s=document.querySelector(`[data-grp="${CSS.escape(GEDIT)}"]`);if(s)s.focus()}));
   document.querySelectorAll("[data-grp]").forEach(el=>el.addEventListener("change",()=>{const n=el.dataset.grp;S.groups=S.groups||{};

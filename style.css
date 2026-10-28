@@ -400,3 +400,31 @@ b.pos{color:var(--accent)} b.neg{color:var(--coral)}
 .best-note{background:var(--accent-soft);color:var(--ink);border-radius:10px;padding:10px 14px;margin:8px 0}
 .best-note ul{margin:6px 0 6px 18px;padding:0}
 .best-note li{margin:2px 0}
+.kplan{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;background:var(--accent-soft);border-radius:10px;padding:10px 14px}
+.kplan .btn{margin-left:auto}
+.kgrid>.kplan{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;background:var(--accent-soft);border-color:transparent;padding:10px 14px}
+.kgrid>.kplan .eyebrow{display:inline;margin:0}
+.kgrid>.kplan b{font-size:1rem}
+button.glance{width:100%;background:none;border:0;border-top:1px solid var(--line);font:inherit;color:inherit;text-align:left;cursor:pointer;border-radius:0}
+button.glance:first-of-type{border-top:0}
+button.glance:hover:not(:disabled){background:var(--bg)}
+button.glance:disabled{cursor:default;opacity:.7}
+.glance .gx{margin-left:auto;color:var(--muted);font-size:1.2rem;align-self:center}
+.gmodal{max-width:720px;max-height:86vh;overflow:hidden}
+.gm-h{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.gm-h .x{background:none;border:0;font-size:1.5rem;cursor:pointer;color:var(--muted);line-height:1}
+.gm-b{overflow:auto;display:flex;flex-direction:column;gap:12px;padding-right:4px}
+.gm-b ul{list-style:none;margin:0;padding:0}
+.gp{border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.gp-h{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-bottom:4px}
+.gp-h .lnk{margin-left:auto}
+.gr{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-top:1px solid var(--line);font-size:.9rem}
+.gp .gr:first-child,.gm-b>ul>.gr:first-child{border-top:0}
+.gr-m{display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:space-between;align-items:center}
+.ints{display:flex;flex-direction:column;gap:10px}
+.int{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-top:1px solid var(--line)}
+.int:first-child{border-top:0}
+.int-r{display:flex;flex-wrap:wrap;gap:6px}
+.ichip{font:inherit;font-size:.8rem;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer}
+.ichip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.int-a{font:inherit;font-size:.86rem;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
