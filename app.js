@@ -35,7 +35,7 @@ const sel=new Map();
 let reviews=0, submitted=null, laterOpen=false, sending=false, confirmOffer=null, draftNote="";
 const openD=new Set();
 const propOpt=new Set(); let propAccepted=false, propConfirm=false, PE=null, peQ="";
-let filt={q:"",tier:"",avail:false,regions:new Set(),prov:"",ppos:""};
+let filt={q:"",tier:"",avail:false,regions:new Set(),region:"",all:false,prov:"",ppos:""}; let POPULAR=[];
 const drafts={};
 
 // ---------- partner activity (partners only; admins and previews are never tracked) ----------
@@ -179,7 +179,7 @@ function showPartner(data){
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   ARTS=(data.articles||[]).map(a=>({name:a.name,region:a.region,grp:a.grp,p1:+a.p1,p2:+a.p2,slots:a.slots.map(s=>({pos:s.pos,prov:s.prov||"",exp:s.exp||"",flag:s.flag||""}))}));
   TOTALS=data.totals; setRegions(); visStart=Date.now();
-  BIDS=data.bids||[]; NOBID=new Set(data.noBid||[]);
+  BIDS=data.bids||[]; NOBID=new Set(data.noBid||[]); POPULAR=data.popular||[];
   const lo=data.lastOffer;
   if(lo&&lo.kind==="proposal"&&(lo.status==="new"||lo.status==="accepted")){
     propAccepted=true;(lo.items||[]).forEach(it=>{const m=/^(.*) 1st$/.exec(it);if(m)propOpt.add(m[1])});
@@ -335,9 +335,9 @@ function render(){
   $("stats").innerHTML=`<div class="stat"><span class="v">${ARTS.length}</span><span class="l">eSIM guides</span></div>
     <div class="stat"><span class="v">${totalViews.toLocaleString("en-GB")}</span><span class="l">page views, last 12 months</span></div>
     <div class="stat"><span class="v">${totalClicks.toLocaleString("en-GB")}</span><span class="l">clicks to providers</span></div>
-    <div class="stat"><span class="v">${totalViews?(totalClicks/totalViews*100).toFixed(1):"0"}%</span><span class="l">blended click rate</span></div>
+    ${v===null?`<div class="stat"><span class="v">${totalViews?(totalClicks/totalViews*100).toFixed(1):"0"}%</span><span class="l">blended click rate</span></div>
     <div class="stat"><span class="v">${av[1]}</span><span class="l">1st positions open now</span></div>
-    <div class="stat"><span class="v">${av[2]}</span><span class="l">2nd positions open now</span></div>`;
+    <div class="stat"><span class="v">${av[2]}</span><span class="l">2nd positions open now</span></div>`:""}`;
   $("main").innerHTML=(v===null?teamPanels():"")+(v!==null&&v!=="__new"?currentPanel(v):"")+inventoryPanel(v)+addonPanel()+bidBox();
   $("rail").innerHTML=railPanel(v);
   bind();
@@ -712,14 +712,30 @@ function currentPanel(v){
 }
 
 const salesBit=(label,n,v,c,brands)=>`<span title="${esc((brands||[]).map(x=>x.b+": "+x.n+" sales, "+eur(x.v)).join("\n")+(c!=null?"\nOur commission: "+eur(c):""))}">${label} ${n||0} (${eur(v||0)})</span>`;
+// A slot a partner can do something with right now: book it, renew it, or make an offer
+function actionable(a,s,v){const st=status(a,s,v);return (st.k==="available"&&st.sel)||(st.k==="mine"&&!st.contract&&(st.soon||st.due||st.fr))||!!st.bid}
+function myRegions(v){const r=new Set();ARTS.forEach(a=>a.slots.forEach(s=>{if(s.prov===v||status(a,s,v).k==="mine")r.add(regionOf[a.name])}));return r}
+function picksFor(v){
+  const mine=myRegions(v),seen=new Set(),out=[];
+  const order=POPULAR.map(n=>ARTS.find(a=>a.name===n)).filter(Boolean);
+  const cand=[];order.forEach(a=>{if(seen.has(a.name))return;seen.add(a.name);
+    const s=a.slots.find(s=>{const st=status(a,s,v);return st.k==="available"&&st.sel});if(s)cand.push({a,s,mine:mine.has(regionOf[a.name])})});
+  cand.sort((x,y)=>(y.mine-x.mine));return cand.slice(0,6);
+}
+function regionSelect(v,team){
+  const mine=team?new Set():myRegions(v);const act=!team&&!filt.all;
+  const cnt={};ARTS.forEach(a=>{const r=regionOf[a.name];cnt[r]=(cnt[r]||0)+(act?a.slots.filter(s=>actionable(a,s,v)).length:1)});
+  let regs=REGION_ORDER.filter(r=>cnt[r]>0||r===filt.region);regs=regs.filter(r=>mine.has(r)).concat(regs.filter(r=>!mine.has(r)));
+  return `<select id="f-reg" aria-label="Region"><option value="">All regions</option>${regs.map(r=>`<option value="${esc(r)}" ${filt.region===r?"selected":""}>${esc(r)} · ${cnt[r]||0} ${act?"open":(cnt[r]===1?"article":"articles")}${mine.has(r)?" ★":""}</option>`).join("")}</select>`;
+}
 function inventoryPanel(v){
   const team=v===null;
   const list=ARTS.filter(a=>{
     if(filt.q && !a.name.toLowerCase().includes(filt.q.toLowerCase())) return false;
     if(filt.tier && grp(a).name!==filt.tier) return false;
     if(team&&filt.prov && !a.slots.some(s=>s.prov===filt.prov&&holdsNow(s)&&(!filt.ppos||String(s.pos)===filt.ppos))) return false;
-    if(filt.regions.size && !filt.regions.has(regionOf[a.name])) return false;
-    if(filt.avail && !a.slots.some(s=>status(a,s,v).sel)) return false;
+    if(filt.region && regionOf[a.name]!==filt.region) return false;
+    if(!team && !filt.all && !a.slots.some(s=>actionable(a,s,v))) return false;
     return true;
   }).sort((x,y)=>grp(x).rank-grp(y).rank||x.name.replace(/^The /,"").localeCompare(y.name.replace(/^The /,"")));
   let lastG="";
@@ -728,12 +744,14 @@ function inventoryPanel(v){
   return `<section class="panel"><div class="phead"><h2>${team?"All placements":"Available placements"}</h2><span class="muted">12-month term · prices per year</span></div>
     ${team?`<p class="note">Views and clicks to eSIM providers over the last 12 months, measured on nomadwise.io. Click rate is clicks per page view. Sales are the last 12 months${SALES_FROM?" (from "+fmtD(new Date(SALES_FROM+"T00:00:00"))+")":""} from the sales feed: the number of sales and, in brackets, what customers paid the brand. Each brand counts towards the position it held: the current holder, or a brand that held 1st or 2nd earlier in the year (from the July positioning sheet and the May and August swaps). 3rd is the brand mentioned further down. “Not placed” is a brand we have no record of in 1st or 2nd on that article. Hover a figure to see the brands and our commission. Admin only: providers see the tier, not these figures.</p>`:""}
     ${team?tiers:""}
-    <div class="legend" aria-label="Key">${[["available","Available"],["selected","Selected"],["mine","Yours"],["reserved","Reserved or in renewal"],["taken","Unavailable"]].concat(team?[]:[["bid","Offers open"]]).map(([c,l])=>`<span class="key ${c}">${l}</span>`).join("")}</div>
-    <div class="regs" role="group" aria-label="Filter by region"><button class="reg" data-reg="" aria-pressed="${!filt.regions.size}">All regions</button>${regs.map(r=>`<button class="reg" data-reg="${esc(r)}" aria-pressed="${filt.regions.has(r)}">${esc(r)} <span class="mono">${ARTS.filter(a=>regionOf[a.name]===r).length}</span></button>`).join("")}</div>
+    <div class="legend" aria-label="Key">${(team?[["available","Available"],["selected","Selected"],["mine","Yours"],["reserved","Reserved or in renewal"],["taken","Unavailable"]]:filt.all?[["available","Available"],["selected","Selected"],["mine","Yours"],["bid","Offers open"],["reserved","Reserved or in renewal"],["taken","Unavailable"]]:[["available","Available"],["selected","Selected"],["mine","Yours"],["bid","Offers open"]]).map(([c,l])=>`<span class="key ${c}">${l}</span>`).join("")}</div>
     <div class="filters"><input type="search" id="f-q" placeholder="Search a country or city" value="${esc(filt.q)}" aria-label="Search articles">
-      <select id="f-tier" aria-label="Tier"><option value="">All tiers</option>${["Top page"].concat(S.tiers.map(t=>t.name)).map(n=>`<option ${filt.tier===n?"selected":""}>${esc(n)}</option>`).join("")}</select>
+      ${regionSelect(v,team)}
+      <select id="f-tier" aria-label="Group"><option value="">All groups</option>${["Top page"].concat(S.tiers.map(t=>t.name)).map(n=>`<option ${filt.tier===n?"selected":""}>${esc(n)}</option>`).join("")}</select>
       ${team?(()=>{const cnt={};ARTS.forEach(a=>a.slots.forEach(s=>{if(holdsNow(s))cnt[s.prov]=(cnt[s.prov]||0)+1}));const ps=Object.keys(cnt).sort((x,y)=>cnt[y]-cnt[x]||x.localeCompare(y));
-        return `<select id="f-prov" aria-label="Provider"><option value="">All providers</option>${ps.map(p=>`<option value="${esc(p)}" ${filt.prov===p?"selected":""}>${esc(p)} · ${cnt[p]}</option>`).join("")}</select>${filt.prov?`<select id="f-ppos" aria-label="Position"><option value="">1st or 2nd</option><option value="1" ${filt.ppos==="1"?"selected":""}>1st only</option><option value="2" ${filt.ppos==="2"?"selected":""}>2nd only</option></select>`:""}`})():`<label class="chk"><input type="checkbox" id="f-avail" ${filt.avail?"checked":""}> Only what I can pick</label>`}</div>
+        return `<select id="f-prov" aria-label="Provider"><option value="">All providers</option>${ps.map(p=>`<option value="${esc(p)}" ${filt.prov===p?"selected":""}>${esc(p)} · ${cnt[p]}</option>`).join("")}</select>${filt.prov?`<select id="f-ppos" aria-label="Position"><option value="">1st or 2nd</option><option value="1" ${filt.ppos==="1"?"selected":""}>1st only</option><option value="2" ${filt.ppos==="2"?"selected":""}>2nd only</option></select>`:""}`})():""}</div>
+    ${team?"":`<p class="showing">${filt.all?`Showing all ${ARTS.length} articles. <button class="lnk" id="f-all" data-all="0">Show only what you can book, renew or bid on</button>`:`Showing ${list.length} ${list.length===1?"article":"articles"} you can book, renew or make an offer on. <button class="lnk" id="f-all" data-all="1">Show all ${ARTS.length}</button>`}</p>`}
+    ${!team&&!filt.q&&!filt.region&&!filt.tier&&!submitted?(()=>{const P=picksFor(v);return P.length?`<div class="picks"><h3>Picked for you <span class="muted" style="font-weight:500;font-size:.86rem">· popular articles with a slot open now${myRegions(v).size?", your regions first":""}</span></h3><div class="pick-row">${P.map(({a,s})=>{const k=key(a,s.pos),on=sel.has(k);return `<button class="pick${on?" on":""}" data-k="${esc(k)}" aria-pressed="${on}"><span class="pn">${esc(a.name)}</span><span class="pm">${s.pos===1?"1st":"2nd"} · ${esc(grp(a).name)}</span><span class="pp"><b class="mono">${eur(priceOf(a,s.pos))}</b><span>${on?"Added ✓":"+ Add"}</span></span></button>`}).join("")}</div></div>`:""})():""}
     <div class="rows">${list.map(a=>{const t=tierOf(a);const g=grp(a).name;const head=g!==lastG?`<div class="ghead"><span>${esc(g)} group</span><span class="gn">${list.filter(x=>grp(x).name===g).length} ${list.filter(x=>grp(x).name===g).length===1?"article":"articles"}</span></div>`:"";lastG=g;
       return head+`<div class="row"><div class="art"><span class="nm">${esc(a.name)}</span><span class="meta">${team&&!(S.setPrices||{})[a.name]?`<select class="gsel${manualTier(a)?" manual":""}" data-grp="${esc(a.name)}" aria-label="Group for ${esc(a.name)}" title="Move this article to another group. Its prices follow."><option value="">Auto · ${esc(autoTier(a).name)}</option>${S.tiers.map(x=>`<option value="${esc(x.name)}" ${manualTier(a)&&manualTier(a).name===x.name?"selected":""}>${esc(x.name)} · set by hand</option>`).join("")}</select>`:`<span class="tchip ${(S.setPrices||{})[a.name]?"Premium":esc(t.name)}">${esc(g)}</span>`}${team?`<span class="mono">${a.views.toLocaleString("en-GB")} views</span><span class="mono">${a.clicks.toLocaleString("en-GB")} clicks</span>${a.views>=50?`<span class="mono">${Math.round(a.clicks/a.views*100)}% click rate</span>`:""}${a.sales&&(a.sales.s1||a.sales.s2||a.sales.s3||a.sales.so)?`<span class="mono sales">Sales: ${salesBit("1st",a.sales.s1,a.sales.v1,a.sales.c1,a.sales.b1)} · ${salesBit("2nd",a.sales.s2,a.sales.v2,a.sales.c2,a.sales.b2)}${a.sales.s3?" · "+salesBit("3rd",a.sales.s3,a.sales.v3,a.sales.c3,a.sales.b3):""}${a.sales.so?" · "+salesBit("not placed",a.sales.so,a.sales.vo,a.sales.co,a.sales.bo):""}</span>`:""}`:""}</span></div>
       <div class="seats">${a.slots.map(s=>seat(a,s,v,team)).join("")}</div></div>`}).join("")||'<p class="muted">No articles match.</p>'}</div></section>`;
@@ -751,6 +769,7 @@ function seat(a,s,v,team){
     const right=renew?`<span class="badge ${st.due?"due":""}">${on?eur(priceOf(a,s.pos)):(c?"To renew":"To renew · "+eur(priceOf(a,s.pos)))}</span>`:"";
     const canR=renew&&!c&&!team&&!submitted;
     return `<button class="seat mine${renew?" renew":""}${on?" selected":""}" ${canR?`data-k="${esc(k)}" aria-pressed="${on}"`:(team?"disabled":`aria-disabled="true" data-tap="${esc(k)}" data-tapl="${esc(lab+", "+sub)}"`)} title="${esc(c&&renew?"Renew through your 2027 proposal":lab+", "+sub)}">${pos}<span class="st">${esc(lab)}</span>${right}<span class="sub">${esc(sub)}</span></button>`;}
+  if(!team&&!filt.all&&st.k!=="mine"&&!st.bid&&!(st.k==="available"&&st.sel)&&!on)return `<div class="seat quiet" aria-disabled="true">${pos}<span class="st">Not open now</span></div>`;
   if(st.bid&&!team){const sent=BIDS.find(b=>b.item===k);
     return `<button class="seat bid${sent?" sent":""}" ${sent?`aria-disabled="true"`:`data-bid="${esc(k)}"`} title="${esc(sent?"Your offer of "+eur(sent.offer)+" is with us":"Held by another partner until "+fmtD(st.exp)+". Make an offer to take it over")}">${pos}<span class="st">${sent?"Offer sent · "+eur(sent.offer):"Make an offer"}</span><span class="pr">${sent?"":"List "+eur(priceOf(a,s.pos))}</span><span class="sub">${st.due?"Held for renewal now":"Ends "+fmtD(st.exp)}</span></button>`;}
   const cls=st.k+(on?" selected":"")+(team?" plain":"")+(st.oneEach?" one":"");
@@ -780,7 +799,9 @@ function railPanel(v){
   if(submitted) return `<section class="panel" id="selp"><h2>Your request</h2><div class="done"><b>Sent to Nomadwise${submitted.when?" on "+fmtD(new Date(submitted.when)):""}.</b><br>${submitted.items.length} ${submitted.items.length===1?"item":"items"}, package price ${eur(submitted.offer)}. We'll reply within 2 working days. You can send another once we've answered this one.</div>
     ${PREVIEW?`<p class="note">Preview only. Nothing was sent.</p><button class="btn small" id="reset">Reset preview</button>`:""}</section>`;
   const items=[...sel.entries()];
-  return `<section class="panel" id="selp"><div class="phead"><h2>Your selection</h2><span class="muted">${T.slots} placements</span></div>
+  const stepN=confirmOffer?3:((T.slots||reviews)?2:1);
+  const stepper=`<ol class="stepper" aria-label="Steps">${["Pick","Review","Send"].map((l,i)=>`<li class="${i+1<stepN?"s-done":i+1===stepN?"s-on":""}"><span>${i+1<stepN?"✓":i+1}</span>${l}</li>`).join("")}</ol>`;
+  return `<section class="panel" id="selp">${stepper}<div class="phead"><h2>Your selection</h2><span class="muted">${T.slots} placements</span></div>
     ${items.length||reviews?`<div class="sel-list">${items.map(([k,x])=>`<div class="sel-item"><span>${esc(k)}${x.kind==="renew"?' <span class="muted">renewal</span>':""}</span><span class="mono">${eur(x.price)}</span><button class="x" data-rm="${esc(k)}" aria-label="Remove ${esc(k)}">×</button></div>`).join("")}
       ${reviews?`<div class="sel-item"><span>Review article × ${reviews}</span><span class="mono">${eur(T.addons)}</span><span></span></div>`:""}</div>`:`<p class="muted" style="font-size:.9rem">Tap an available slot to add it. Your current placements can be renewed from the list on the left.</p>`}
     <div class="sum"><span>List price</span><span class="mono">${eur(T.list+T.addons)}</span></div>
@@ -878,6 +899,8 @@ function bind(){
   document.querySelectorAll("[data-reg]").forEach(el=>el.addEventListener("click",()=>{const r=el.dataset.reg;if(r==="")filt.regions.clear();else if(filt.regions.has(r))filt.regions.delete(r);else{filt.regions.add(r);track("filter_region",{region:r})}render()}));
   const fpv=$("f-prov");if(fpv)fpv.addEventListener("change",()=>{filt.prov=fpv.value;if(!fpv.value)filt.ppos="";render()});
   const fpp=$("f-ppos");if(fpp)fpp.addEventListener("change",()=>{filt.ppos=fpp.value;render()});
+  const fr=$("f-reg");if(fr)fr.addEventListener("change",()=>{filt.region=fr.value;if(fr.value)track("filter_region",{region:fr.value});render()});
+  const fal=$("f-all");if(fal)fal.addEventListener("click",()=>{filt.all=fal.dataset.all==="1";if(filt.all)track("show_all",{});render()});
   const fa=$("f-avail");if(fa)fa.addEventListener("change",()=>{filt.avail=fa.checked;if(fa.checked)track("filter_available",{});render()});
   const rm=$("rv-m"),rp=$("rv-p");
   if(rm)rm.addEventListener("click",()=>{if(!submitted&&reviews>0){reviews--;confirmOffer=null;track("review_change",{count:reviews});render()}});
