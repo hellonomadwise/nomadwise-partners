@@ -326,3 +326,7 @@ b.pos{color:var(--accent)} b.neg{color:var(--coral)}
 .pe-a{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 10px;cursor:pointer}
 .pe-a:hover{border-color:var(--accent)}
 .pe-a b{color:var(--accent)}
+.roi-ctl input{width:58px;padding:2px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font:inherit;text-align:center}
+.rtbl .sugc{background:color-mix(in srgb,var(--mine-soft) 55%,transparent)}
+.kgrid .ksug{border-color:color-mix(in srgb,var(--mine) 35%,var(--line));background:color-mix(in srgb,var(--mine-soft) 40%,var(--surface))}
+.kgrid .ksug b{color:var(--mine)}

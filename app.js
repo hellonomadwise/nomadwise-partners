@@ -440,6 +440,8 @@ function pbInit(p){const c=S.contracts[p];if(!c)return null;
   const curList=cur.reduce((t,n)=>{const a=ARTS.find(x=>x.name===n);return t+(a?priceOf(a,1):0)},0);
   const disc=sc.disc!=null?+sc.disc:(curList?1-(+c.base||0)*12/curList:0);
   return {p,cur,keep:new Set(sc.keep?sc.keep.filter(n=>cur.includes(n)):cur),add:new Set(sc.add||[]),disc,q:""};}
+const ROI=()=>{const r=+((SCEN._renewal||{}).roi);return r>0?r:1.5};
+function roiSave(r){SCEN._renewal={roi:r};sb.rpc("partners_team_scenario",{p_session:SESSION,p_provider:"_renewal",p_data:{roi:r}}).then(({error})=>{if(error)toast("Couldn't save the target")})}
 function pbSetList(){return PB.cur.filter(n=>PB.keep.has(n)).concat([...PB.add]).reduce((t,n)=>{const a=ARTS.find(x=>x.name===n);return t+(a?priceOf(a,1):0)},0)}
 function pbSave(){if(!PB)return;clearTimeout(pbSave.t);pbSave.t=setTimeout(async()=>{
   const data={keep:[...PB.keep],add:[...PB.add],disc:PB.disc,monthly:PB.monthly,at:new Date().toISOString()};SCEN[PB.p]=data;
@@ -534,7 +536,7 @@ function teamPanels(){
     ${doneO.length?`<details id="d-done" ${openD.has("d-done")?"open":""}><summary style="cursor:pointer;font-weight:600">Answered · ${doneO.length}</summary><div class="queue" style="margin-top:8px">${doneO.map(oCard).join("")}</div></details>`:""}</section>`;
   const firstEnd=p=>byP[p].reduce((m,x)=>x.st.exp<m?x.st.exp:m,byP[p][0].st.exp);
   const provsU=provs.slice().sort((x,y)=>firstEnd(x)-firstEnd(y));
-  const ren=`<section class="panel internal"><div class="phead"><h2>Renewals due<span class="tag-internal">Admin only</span></h2><span class="muted">Next 90 days and recently ended · soonest first</span></div>
+  const ren=`<section class="panel internal"><div class="phead"><h2>Renewals due<span class="tag-internal">Admin only</span></h2><span class="muted roi-ctl">Suggest prices for a <input type="number" id="roi" min="0.5" max="5" step="0.1" value="${ROI()}" aria-label="Target return"> × return on their sales · soonest first</span></div>
     <div class="queue">${provsU.map(p=>{const L=byP[p];
       const total=L.reduce((t,x)=>t+priceOf(x.a,x.s.pos),0);
       const c=S.contracts[p];const groups={};L.forEach(x=>{const k=x.s.exp;(groups[k]=groups[k]||[]).push(x)});
@@ -545,11 +547,14 @@ function teamPanels(){
       const pc=x=>Math.round(x*100);
       const pays=c&&c.current?eur(c.current.monthly)+" a month":"";
       const lastPay=(ar,pos)=>{const L2=PAYMENTS.filter(y=>y.p===p&&y.a===ar.name);const same=L2.filter(y=>y.pos===pos),pool=same.length?same:L2.filter(y=>y.pos==null);return pool.length?pool[pool.length-1]:null};
-      const R=L.map(x=>{const lp=priceOf(x.a,x.s.pos),bs=brandSales(x.a,p),lpay=lastPay(x.a,x.s.pos);const fee=payY?lp*share:(lpay?+lpay.paid:null);return {x,lp,bs,lpay,fee}});
+      const roi=ROI(),floorP=pos=>{const t=S.tiers[S.tiers.length-1]||{p1:0,p2:0};return +(pos===1?t.p1:t.p2)||0};
+      const R=L.map(x=>{const lp=priceOf(x.a,x.s.pos),bs=brandSales(x.a,p),lpay=lastPay(x.a,x.s.pos);const fee=payY?lp*share:(lpay?+lpay.paid:null);
+        const sug=Math.min(lp,Math.max(floorP(x.s.pos),Math.round((bs.v-bs.c)/roi/10)*10));return {x,lp,bs,lpay,fee,sug}});
+      const SG=R.reduce((t,r)=>({s:t.s+r.sug,v:t.v+r.bs.v,c:t.c+r.bs.c,atL:t.atL+(r.sug>=r.lp?1:0),atF:t.atF+(r.sug<=floorP(r.x.s.pos)?1:0)}),{s:0,v:0,c:0,atL:0,atF:0});
       const anyFee=R.some(r=>r.fee!=null),anyPaid=R.some(r=>r.lpay);
       const T={lp:0,paid:0,paidN:0,fee:0,feeN:0};R.forEach(r=>{T.lp+=r.lp;if(r.lpay){T.paid+=+r.lpay.paid;T.paidN++}if(r.fee!=null){T.fee+=r.fee;T.feeN++}});
       const feeK=R.filter(r=>r.fee!=null),feeBs=feeK.reduce((t,r)=>({v:t.v+r.bs.v,c:t.c+r.bs.c}),{v:0,c:0});
-      const cols=9;
+      const cols=10;
       const mo=d=>{const t=new Date(d+"T00:00:00");return MON[t.getMonth()]+" "+t.getFullYear()};
       const netOf=r=>r.fee==null?null:r.bs.v-r.fee-r.bs.c;
       const maxAbs=Math.max(1,...R.map(r=>Math.abs(netOf(r)||0)));
@@ -563,6 +568,7 @@ function teamPanels(){
             return `<tr class="${n==null?"":n<0?"r-neg":"r-pos"}"><td><b style="font-weight:600">${esc(x.a.name)}</b> <span class="muted" style="font-size:.78rem">${x.s.pos===1?"1st":"2nd"} · ${esc(grp(x.a).name)}</span></td>
               <td class="num mono">${eur(lp)}${lpc?` <span style="font-size:.72rem;color:${lpc>0?"var(--accent)":"var(--coral)"}">${lpc>0?"+":""}${lpc}%</span>`:""}</td>
               <td class="num mono" title="${tip}">${paidCell}</td>
+              <td class="num mono sugc" title="Their sales less our commission, divided by ${roi}, between the lowest group price and today's list">${eur(r.sug)}</td>
               <td class="num mono split">${bs.v?eur(bs.v):'<span class="muted">€0</span>'} <span class="muted" style="font-size:.72rem">${bs.n} ${bs.n===1?"sale":"sales"}</span></td>
               <td class="num mono muted">${fee!=null?"-"+eur(fee):"?"}</td>
               <td class="num mono muted">-${eur(bs.c)}</td>
@@ -571,19 +577,23 @@ function teamPanels(){
       const feeLbl=payY?"their fee share":"what they paid last time";
       const open=drafts[p]!=null||openD.has(id);
       return `<details class="qi ren" id="${id}" ${open?"open":""}><summary><span><b>${esc(p)}</b> <span class="muted">· ${L.length} ${L.length===1?"slot":"slots"}</span></span>
-        <span class="rsum"><span class="pill ${past?"due":"soon"}">${past?"Ended "+fmtD(fe):"First ends "+fmtD(fe)}</span>${pays?`<span class="muted">Pays ${pays}</span>`:""}<span class="muted">List ${eur(total)} a year</span><span class="muted">Made them <b style="color:var(--ink)">${eur(SS.v)}</b> in 12 months</span>${rem&&rem.sent_at?`<span class="pill ok">Reminder sent ${fmtD(new Date(rem.sent_at))}</span>`:(drafts[p]!=null?`<span class="pill soon">Draft open</span>`:"")}</span></summary>
+        <span class="rsum"><span class="pill ${past?"due":"soon"}">${past?"Ended "+fmtD(fe):"First ends "+fmtD(fe)}</span>${pays?`<span class="muted">Pays ${pays}</span>`:""}<span class="muted">List ${eur(total)} a year</span><span class="muted">Made them <b style="color:var(--ink)">${eur(SS.v)}</b> in 12 months</span><span class="pill fr" title="Suggested renewal at a ${roi}× target">Suggest ${eur(SG.s)}</span>${RN.length?`<span class="pill ${netT<0?"due":"ok"}" title="What they made or lost after ${payY?"their fee":"what they paid"} and our commission">${netT<0?"Lost":"Up"} ${eur(Math.abs(netT))} · ${posN} of ${RN.length} in profit</span>`:""}${rem&&rem.sent_at?`<span class="pill ok">Reminder sent ${fmtD(new Date(rem.sent_at))}</span>`:(drafts[p]!=null?`<span class="pill soon">Draft open</span>`:"")}</span></summary>
       <div class="kgrid">
         <div><span class="eyebrow">List price</span><b class="mono">${eur(total)}</b><span class="muted">a year · ${L.length} ${L.length===1?"slot":"slots"} · ${eur(total/L.length)} each on average</span></div>
         <div><span class="eyebrow">${payY?"Pays now":"Paid last time"}</span>${payY?`<b class="mono">${eur(payY)}</b><span class="muted">${eur(c.current.monthly)} a month · ${eur(payY/L.length)} per article</span><span class="pill ${share<1?"due":"ok"}" style="justify-self:start">${share<1?pc(1-share)+"% below list":pc(share-1)+"% above list"}</span>`:(anyPaid?`<b class="mono">${eur(T.paid)}</b><span class="muted">a year, from their last invoices${T.paidN<L.length?" ("+T.paidN+" of "+L.length+" slots found)":""}</span><span class="pill ${T.paid<T.lp?"due":"ok"}" style="justify-self:start">${T.paid<(R.filter(r=>r.lpay).reduce((t,r)=>t+r.lp,0))?pc(1-T.paid/R.filter(r=>r.lpay).reduce((t,r)=>t+r.lp,0))+"% below today's list":"at or above today's list"}</span>`:`<span class="muted">No invoices found for these slots</span>`)}</div>
         ${c?`<div><span class="eyebrow">Our 2027 proposal</span><b class="mono">${eur(propY)}</b><span class="muted">${eur(c.base)} a month core · ${eur(propY/L.length)} per article${payY?" · "+(propY>=payY?"+":"")+pc(propY/payY-1)+"% on now":""}</span><span class="pill ${propY<total?"due":"ok"}" style="justify-self:start">${propY<total?pc(1-propY/total)+"% below list":"at or above list"}</span></div>`:""}
         <div><span class="eyebrow">Their sales on these, 12 months</span><b class="mono">${eur(SS.v)}</b><span class="muted">${SS.n} sales · our commission ${eur(SS.c)}</span>${payY?`<span class="muted">${(SS.v/payY).toFixed(1)}× what they pay us</span>`:""}</div>
         ${RN.length?`<div class="${netT<0?"kneg":"kpos"}"><span class="eyebrow">Their result</span><b class="mono ${netT<0?"neg":"pos"}">${netT<0?"-":"+"}${eur(Math.abs(netT))}</b><span class="muted">${posN} of ${RN.length} articles made them money after ${payY?"their fee":"what they paid"} and our commission</span><span class="muted">We earned ${eur(feeT+commT)} (${eur(feeT)} ${payY?"fee":"paid"} + ${eur(commT)} commission)</span></div>`:""}
+        <div class="ksug"><span class="eyebrow">Suggested renewal</span><b class="mono">${eur(SG.s)} a year</b>${payY?`<span class="muted">${eur(SG.s/12)} a month</span>`:""}
+          <span class="muted">${(payY||T.paid)?`${SG.s>=(payY||T.paid)?"+":""}${pc(SG.s/(payY||T.paid)-1)}% on what they ${payY?"pay now":"paid last time"} · `:""}${pc(SG.s/total)}% of list</span>
+          <span class="muted">At this price they'd make ${(SG.v-SG.s-SG.c)<0?"-":"+"}${eur(Math.abs(SG.v-SG.s-SG.c))} and we'd earn ${eur(SG.s+SG.c)}, on last year's sales</span>
+          <span class="muted">${SG.atL} at list · ${SG.atF} at the lowest price · rest priced on their sales</span></div>
       </div>
       <div class="scroll ren-list"><table class="tbl rtbl"><thead>
-        <tr class="grp"><th colspan="3">Price</th><th colspan="4" class="split">Their last 12 months on this article</th></tr>
-        <tr><th>Article</th><th class="num" title="List price now, and how it compares with what they paid">List now</th><th class="num">${payY?"Fee share*":"Paid last time"}</th><th class="num split">Their sales</th><th class="num">Less paid</th><th class="num">Less our commission</th><th class="netc">= What they made or lost</th></tr></thead><tbody>${rows}</tbody>
-        <tfoot><tr><td><b>Total</b></td><td class="num mono"><b>${eur(total)}</b></td><td class="num mono"><b>${payY?eur(payY):eur(T.paid)}</b>${!payY&&T.paidN<L.length?` <span class="muted" style="font-size:.72rem">${T.paidN} of ${L.length}</span>`:""}</td><td class="num mono split"><b>${eur(SS.v)}</b></td><td class="num mono muted"><b>-${eur(feeT)}</b></td><td class="num mono muted"><b>-${eur(commT)}</b></td><td class="netc">${RN.length?`<b class="mono ${netT<0?"neg":"pos"}">${netT<0?"-":"+"}${eur(Math.abs(netT))}</b>`:""}</td></tr></tfoot></table></div>
-      <p class="note">What they made or lost = what customers paid ${esc(p)} on that article in the last 12 months, less ${payY?"their fee share":"what they paid us for the slot"} and our commission. It is before their own cost of the data, so their real margin is lower. ${anyPaid&&!payY?"Paid last time is the per-slot amount on their latest invoice after any bundle discount (hover for the invoice); the % by the list price compares today's list with it. ":""}${payY?"*Fee share: their yearly fee split across these articles in proportion to list price ("+pc(1-share)+"% below list). ":""}Sales count every sale of ${esc(p)} on that article in any position.</p>
+        <tr class="grp"><th colspan="4">Price</th><th colspan="4" class="split">Their last 12 months on this article</th></tr>
+        <tr><th>Article</th><th class="num" title="List price now, and how it compares with what they paid">List now</th><th class="num">${payY?"Fee share*":"Paid last time"}</th><th class="num sugc">Suggested</th><th class="num split">Their sales</th><th class="num">Less paid</th><th class="num">Less our commission</th><th class="netc">= What they made or lost</th></tr></thead><tbody>${rows}</tbody>
+        <tfoot><tr><td><b>Total</b></td><td class="num mono"><b>${eur(total)}</b></td><td class="num mono"><b>${payY?eur(payY):eur(T.paid)}</b>${!payY&&T.paidN<L.length?` <span class="muted" style="font-size:.72rem">${T.paidN} of ${L.length}</span>`:""}</td><td class="num mono sugc"><b>${eur(SG.s)}</b></td><td class="num mono split"><b>${eur(SS.v)}</b></td><td class="num mono muted"><b>-${eur(feeT)}</b></td><td class="num mono muted"><b>-${eur(commT)}</b></td><td class="netc">${RN.length?`<b class="mono ${netT<0?"neg":"pos"}">${netT<0?"-":"+"}${eur(Math.abs(netT))}</b>`:""}</td></tr></tfoot></table></div>
+      <p class="note">Suggested: for each article, their sales there less our commission, divided by a target of ${roi}× (so they make about €${roi} in sales for every €1 they pay us), kept between the lowest group price and today's list. Change the target at the top of Renewals. What they made or lost = what customers paid ${esc(p)} on that article in the last 12 months, less ${payY?"their fee share":"what they paid us for the slot"} and our commission. It is before their own cost of the data, so their real margin is lower. ${anyPaid&&!payY?"Paid last time is the per-slot amount on their latest invoice after any bundle discount (hover for the invoice); the % by the list price compares today's list with it. ":""}${payY?"*Fee share: their yearly fee split across these articles in proportion to list price ("+pc(1-share)+"% below list). ":""}Sales count every sale of ${esc(p)} on that article in any position.</p>
       ${drafts[p]!=null?`<textarea class="draft" id="rd-${slug(p)}" data-rd="${esc(p)}" rows="10" aria-label="Draft reminder to ${esc(p)}">${esc(drafts[p])}</textarea>${em?"":`<p class="note">No one from ${esc(p)} is on the access list yet. Add them under Who has access.</p>`}`:""}
       <div class="acts">${drafts[p]!=null?`<button class="btn small primary" data-ap="${esc(p)}">Approve and open in email</button><button class="btn small ghost" data-rdx="${esc(p)}">Discard draft</button>`:`<button class="btn small" data-dr="${esc(p)}">Draft reminder</button>`}</div></details>`}).join("")||'<p class="muted" style="font-size:.9rem">Nothing ends in the next 90 days.</p>'}</div></section>`;
   const prices=`<section class="panel internal"><div class="phead"><h2 class="dup">Prices and rules<span class="tag-internal">Admin only</span></h2><span class="muted">Changes save straight away and show on every provider's page</span></div>
@@ -799,6 +809,7 @@ async function submitOffer(items,list,amt,note,kind){
 }
 
 function bind(){
+  const roiI=$("roi");if(roiI)roiI.addEventListener("change",()=>{const r=Math.min(5,Math.max(0.5,+roiI.value||1.5));roiSave(r);render()});
   const pbm=$("pb-m");if(pbm)pbm.addEventListener("change",()=>{const m=Math.max(0,+pbm.value||0);const L=pbSetList();PB.disc=L?Math.min(.9,Math.max(-1,1-m*12/L)):0;pbSave();render()});
   const pbd=$("pb-d");if(pbd)pbd.addEventListener("change",()=>{PB.disc=Math.min(.9,Math.max(0,(+pbd.value||0)/100));pbSave();render()});
   const pbq=$("pb-q");if(pbq)pbq.addEventListener("input",()=>{PB.q=pbq.value;const pos=pbq.selectionStart;render();const n=$("pb-q");n.focus();n.setSelectionRange(pos,pos)});
