@@ -267,6 +267,8 @@ function applyTeamData(data){
   offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailsOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
   setRegions();
 }
+// Partner companies worth listing: someone from them can sign in, or they have (or had) a placement or contract
+const liveCos=()=>PROVIDERS.filter(p=>ACCESS.some(x=>x.provider===p.name)||S.contracts[p.name]||ARTS.some(a=>a.slots.some(s=>s.prov===p.name)));
 const emailsOf=p=>ACCESS.filter(x=>x.provider===p).map(x=>x.email).join(",");
 const namesOf=p=>ACCESS.filter(x=>x.provider===p&&x.name).map(x=>firstOf(x.name));
 async function reloadTeam(){const {data,error}=await sb.rpc("partners_page",{p_session:SESSION});if(!error&&data&&data.role==="team"){applyTeamData(data);render()}}
@@ -835,7 +837,7 @@ function teamPanels(){
       <td><div class="linkcell"><button class="btn small" data-sendlink="${esc(x.email)}">Email sign-in link</button>${x.email===ME?"":`<button class="btn small ghost" data-rmacc="${esc(x.email)}">Remove</button>`}</div></td></tr>`;
       const sub=t=>`<tr class="acc-g"><td colspan="5">${t}</td></tr>`;
       const team=ACCESS.filter(x=>!x.provider),parts=ACCESS.filter(x=>x.provider).sort((u,w)=>u.provider.localeCompare(w.provider)||String(u.name).localeCompare(String(w.name)));
-      const none=PROVIDERS.filter(p=>!ACCESS.some(x=>x.provider===p.name)).map(p=>p.name);
+      const none=liveCos().filter(p=>!ACCESS.some(x=>x.provider===p.name)).map(p=>p.name);
       return sub("Nomadwise team")+team.map(row).join("")+sub("Partners")+(parts.map(row).join("")||'<tr><td colspan="5" class="muted">No partners yet.</td></tr>')
         +(none.length?`<tr><td colspan="5" class="muted" style="font-size:.86rem">No one from ${esc(none.join(", "))} yet. Add their contact below so they can sign in.</td></tr>`:"")})()}
     </tbody></table></div>
@@ -849,7 +851,7 @@ function teamPanels(){
     <p class="note">Giving access doesn't email anyone. Tell them to sign in at partners.nomadwise.io, or press Email sign-in link.</p></section>
     <section class="panel internal"><div class="phead"><h2>What each partner is looking for</h2></div>
     <p class="note">Note what each partner told you on a call. Their page then shows "Picked for you" from these, best sellers first. Without it, they see our most read guides with a slot open. Each partner only ever sees their own.</p>
-    <div class="ints">${PROVIDERS.map(p=>{const I=interestOf(p.name);return `<div class="int"><b>${esc(p.name)}</b>
+    <div class="ints">${liveCos().map(p=>{const I=interestOf(p.name);return `<div class="int"><b>${esc(p.name)}</b>
       <div class="int-r">${REGION_ORDER.filter(r=>ARTS.some(a=>regionOf[a.name]===r)).map(r=>`<button class="ichip${I.regions.includes(r)?" on":""}" data-intr="${esc(p.name)}|${esc(r)}" aria-pressed="${I.regions.includes(r)}">${esc(r)}</button>`).join("")}</div>
       <div class="int-arts">${I.articles.map(n=>`<span class="pchip">${esc(n)}<button class="x" data-intdel="${esc(p.name)}|${esc(n)}" aria-label="Remove ${esc(n)}">×</button></span>`).join("")}
         <input class="int-a" data-inta="${esc(p.name)}" list="int-arts" placeholder="${I.articles.length?"Add another article":"Add a specific article, e.g. Japan"}" aria-label="Add an article ${esc(p.name)} is interested in"></div></div>`}).join("")}</div>
