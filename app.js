@@ -26,7 +26,7 @@ const REGION_ORDER=["Europe","Asia","Caucasus & Central Asia","Middle East","Afr
 // ---------- state ----------
 let ROLE=null;           // "team" | "provider"
 let ME=null;             // provider name, or the team member's email
-let PAYMENTS=[], SHOWN={}, SCEN={}, PB=null; let SESSION=null; let ACCESS=[]; let MYNAME=""; let ACT_EV=[]; let PREVIEW=false; let SALES_FROM=null;
+let PAYMENTS=[], SHOWN={}, SCEN={}, PB=null, BIDS=[], BIDBOX=null, NOBID=new Set(); let SESSION=null; let ACCESS=[]; let MYNAME=""; let ACT_EV=[]; let PREVIEW=false; let SALES_FROM=null;
 let S={tiers:[],setPrices:{},packages:{},contracts:{},firstRefusal:{articles:[]},discTiers:[],review:0,discMin:0,discPct:0};
 let ARTS=[], TOTALS=null, PROVIDERS=[], TEAM=[], REMS={}, offers=[];
 const regionOf={};
@@ -105,6 +105,9 @@ function status(a,s,viewer){
   if(viewer&&st.sel&&st.k!=="mine"){const op=s.pos===1?2:1,os=a.slots[op-1],ost=os?status0(a,os,viewer):null,pk=key(a,op);
     const holds=ost&&ost.k==="mine",picked=sel.has(pk);
     if(holds||picked){const ol=op===1?"1st":"2nd";return {k:"taken",label:holds?"You have "+ol+" here":"You picked "+ol+" here",who:"",sel:false,oneEach:true}}}
+  // Partners can make an offer to take over a slot held by someone else in its last two months (or while it is held for renewal)
+  if(viewer&&!st.frSlot&&s.prov&&s.prov!==viewer&&s.exp&&s.flag!=="E"&&!NOBID.has(a.name+" · "+(s.pos===1?"1st":"2nd"))&&!(S.contracts[s.prov]&&S.contracts[s.prov].noBids)&&((st.k==="taken"&&st.soon)||(st.k==="reserved"&&st.due))){
+    st.bid=true;st.label=st.due?"In renewal · offers open":"Ends "+fmtD(st.exp)+" · offers open";}
   // Admin: who is on the slot when nobody has paid for it (from the July 2026 positioning sheet)
   if(viewer===null&&!st.paid&&!(s.prov&&s.exp)){const sh=(SHOWN[a.name]||{})[String(s.pos)];
     st.who=(st.who?st.who+" · ":"")+(sh?"Showing: "+sh+" (unpaid, Jul 2026 sheet)":"Showing: not recorded");}
@@ -125,10 +128,10 @@ function status0(a,s,viewer){
   if(s.prov && s.exp){
     const e=D(s.exp), d=days(e,TODAY);
     if(d>=0){
-      const soon=d<=90;
-      if(viewer===s.prov) return {k:"mine",label:soon?"Renew by "+fmtD(e):"Yours to "+fmtM(e),sel:true,soon,exp:e,held:true,paid:true};
+      const soon=d<=60, near=d<=90;
+      if(viewer===s.prov) return {k:"mine",label:soon?"Renew by "+fmtD(e):"Yours to "+fmtM(e),sel:true,soon,near,exp:e,held:true,paid:true};
       const nx=new Date(e);nx.setDate(nx.getDate()+1);
-      return {k:"taken",label:"Unavailable · opens "+fmtM(nx),who:s.prov+" · "+fmtD(e),soon,exp:e,held:true,paid:true};
+      return {k:"taken",label:"Unavailable · opens "+fmtM(nx),who:s.prov+" · "+fmtD(e),soon,near,exp:e,held:true,paid:true};
     }
     if(d>=-60){
       if(viewer===s.prov){const hold=new Date(e);hold.setDate(hold.getDate()+60);return {k:"mine",label:"Ended "+e.getDate()+" "+MON[e.getMonth()]+", renew now",due:true,sel:true,exp:e,hold,held:true,paid:true};}
@@ -176,6 +179,7 @@ function showPartner(data){
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   ARTS=(data.articles||[]).map(a=>({name:a.name,region:a.region,grp:a.grp,p1:+a.p1,p2:+a.p2,slots:a.slots.map(s=>({pos:s.pos,prov:s.prov||"",exp:s.exp||"",flag:s.flag||""}))}));
   TOTALS=data.totals; setRegions(); visStart=Date.now();
+  BIDS=data.bids||[]; NOBID=new Set(data.noBid||[]);
   const lo=data.lastOffer;
   if(lo&&lo.kind==="proposal"&&(lo.status==="new"||lo.status==="accepted")){
     propAccepted=true;(lo.items||[]).forEach(it=>{const m=/^(.*) 1st$/.exec(it);if(m)propOpt.add(m[1])});
@@ -334,7 +338,7 @@ function render(){
     <div class="stat"><span class="v">${totalViews?(totalClicks/totalViews*100).toFixed(1):"0"}%</span><span class="l">blended click rate</span></div>
     <div class="stat"><span class="v">${av[1]}</span><span class="l">1st positions open now</span></div>
     <div class="stat"><span class="v">${av[2]}</span><span class="l">2nd positions open now</span></div>`;
-  $("main").innerHTML=(v===null?teamPanels():"")+(v!==null&&v!=="__new"?currentPanel(v):"")+inventoryPanel(v)+addonPanel();
+  $("main").innerHTML=(v===null?teamPanels():"")+(v!==null&&v!=="__new"?currentPanel(v):"")+inventoryPanel(v)+addonPanel()+bidBox();
   $("rail").innerHTML=railPanel(v);
   bind();
   mbar();
@@ -479,7 +483,7 @@ function pbPanel(){
     <div class="pb-top">
       <div style="display:flex;gap:10px;flex-wrap:wrap"><label class="fl" style="max-width:170px">Discount off list (%)<input type="number" id="pb-d" min="0" max="90" step="1" value="${Math.round(PB.disc*100)}"></label>
       <label class="fl" style="max-width:170px">Monthly price (€)<input type="number" id="pb-m" min="0" value="${M}"></label></div>
-      <div class="acts"><button class="btn small" id="pb-dropneg">Drop all where their net is negative</button><button class="btn small ghost" id="pb-reset">Reset to current</button><button class="btn small ghost" id="pb-copy">Copy summary</button><button class="btn small primary" id="pb-share">${c.edit&&c.edit.on?"Update what "+esc(p)+" sees":"Share with "+esc(p)+" to adjust"}</button>${c.edit&&c.edit.on?`<button class="btn small ghost" id="pb-unshare">Stop sharing</button>`:""}</div>
+      <div class="acts"><button class="btn small" id="pb-dropneg">Drop all where their net is negative</button><button class="btn small ghost" id="pb-reset">Reset to current</button><button class="btn small ghost" id="pb-copy">Copy summary</button><label class="chk" style="font-size:.86rem" title="When on, other partners can't make takeover offers on ${esc(p)}'s slots"><input type="checkbox" id="pb-nobid" ${c.noBids?"checked":""}> Keep ${esc(p)}'s articles closed to offers</label><button class="btn small primary" id="pb-share">${c.edit&&c.edit.on?"Update what "+esc(p)+" sees":"Share with "+esc(p)+" to adjust"}</button>${c.edit&&c.edit.on?`<button class="btn small ghost" id="pb-unshare">Stop sharing</button>`:""}</div>
     </div>
     ${c.edit&&c.edit.on?`<p class="note" style="color:var(--accent)"><b>Shared with ${esc(p)}${c.edit.shared_at?" on "+fmtD(new Date(c.edit.shared_at)):""}.</b> Their page shows ${c.edit.keep.length+c.edit.add.length} articles at ${Math.round((c.edit.disc||0)*100)}% off list (€${c.base} a month). They can remove articles, add free ones and send it back; it lands in the offers inbox and by email.</p>`:""}
     <div class="kgrid">
@@ -515,7 +519,7 @@ function teamPanels(){
   const pct=n=>total?Math.round(n/total*100):0;
   const byP={};
   ARTS.forEach(a=>a.slots.forEach(s=>{const st=status(a,s,null);
-    if(s.prov&&st.exp&&(st.due||st.soon)){(byP[s.prov]=byP[s.prov]||[]).push({a,s,st})}}));
+    if(s.prov&&st.exp&&(st.due||st.near)){(byP[s.prov]=byP[s.prov]||[]).push({a,s,st})}}));
   const provs=Object.keys(byP).sort((x,y)=>byP[y].length-byP[x].length);
   const how=`<section class="panel internal"><div class="phead"><h2 class="dup">How this works<span class="tag-internal">Admin only</span></h2></div>
     <ol class="how">
@@ -534,7 +538,7 @@ function teamPanels(){
       <div class="kpi"><div class="v">${open}</div><div class="l">Open to sell</div></div>
     </div></section>`;
   const openO=offers.map((o,i)=>[o,i]).filter(([o])=>!o.sent), doneO=offers.map((o,i)=>[o,i]).filter(([o])=>o.sent);
-  const oCard=([o,i])=>{const inv=invoice(o);const id="of-"+(o.id||i);return `<details class="qi" id="${id}" ${openD.has(id)?"open":""}><summary class="h" style="cursor:pointer"><span><b>${esc(o.from)}</b>${o.preview?'<span class="ex">Preview</span>':""}${o.kind==="proposal"?'<span class="ex">2027 proposal</span>':""}<br><span class="muted" style="font-size:.84rem">${o.items.length} items · ${o.kind==="proposal"?"accepted at":"offer"} <b class="mono">${eur(o.offer)}</b>${o.kind==="proposal"?" a year":` against <span class="mono">${eur(o._pkg)}</span>`}</span></span><span class="pill ${o.sent?(o.action==="decline"?"due":"ok"):"soon"}">${esc(o.sent?({accept:"Accepted",counter:"Countered",decline:"Declined"}[o.action]||"Answered"):(o.action?"Draft ready":"New"))}</span></summary>
+  const oCard=([o,i])=>{const inv=invoice(o);const id="of-"+(o.id||i);return `<details class="qi" id="${id}" ${openD.has(id)?"open":""}><summary class="h" style="cursor:pointer"><span><b>${esc(o.from)}</b>${o.preview?'<span class="ex">Preview</span>':""}${o.kind==="proposal"?'<span class="ex">2027 proposal</span>':""}${o.kind==="bid"?'<span class="ex">Takeover offer</span>':""}<br><span class="muted" style="font-size:.84rem">${o.items.length} items · ${o.kind==="proposal"?"accepted at":"offer"} <b class="mono">${eur(o.offer)}</b>${o.kind==="proposal"?" a year":` against <span class="mono">${eur(o._pkg)}</span>`}</span></span><span class="pill ${o.sent?(o.action==="decline"?"due":"ok"):"soon"}">${esc(o.sent?({accept:"Accepted",counter:"Countered",decline:"Declined"}[o.action]||"Answered"):(o.action?"Draft ready":"New"))}</span></summary>
       <div class="note">${esc(o.email||"No email saved")} · ${esc(o.when)}</div>
       ${inv}
       ${o.note?`<div class="note">“${esc(o.note)}”</div>`:""}
@@ -656,6 +660,19 @@ function peEditor(c,v){
       <div class="pe-add">${cand.map(x=>`<button class="pe-a" data-peadd="${esc(x.a.name)}"><span>${esc(x.a.name)}</span><span class="muted mono">${eur(priceOf(x.a,1))}${x.free>TODAY?" · from "+fmtM(x.free):""}</span><b>+</b></button>`).join("")||'<p class="muted" style="font-size:.88rem">Nothing matches.</p>'}</div></details>`}
     ${peChanged(c)&&!lock?`<p class="note" style="margin-top:6px"><button class="lnk" id="pe-reset">Back to our proposal</button></p>`:""}</div>`;
 }
+
+function bidBox(){
+  if(!BIDBOX)return "";const [name,p]=BIDBOX.k.split(" · ");const a=ARTS.find(x=>x.name===name);const s=a&&a.slots[p==="1st"?0:1];const st=a?status(a,s,viewer()):{};
+  const lp=a?priceOf(a,p==="1st"?1:2):0;
+  return `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="bid-t"><div class="modal-in">
+    <h2 id="bid-t">Make an offer for ${esc(BIDBOX.k)}</h2>
+    <p class="muted" style="font-size:.92rem">This placement is held by another partner ${st.due?"and is being held for them to renew":"until "+(st.exp?fmtD(st.exp):"soon")}. They can renew first. If they don't, we'll look at offers and come back to you within 2 working days.</p>
+    <div class="sum" style="margin:10px 0"><span>List price, 12 months</span><span class="mono">${eur(lp)}</span></div>
+    <label class="fl">Your offer for 12 months (€)<input id="bid-amt" type="number" min="1" inputmode="numeric" value="${BIDBOX.amt||lp}"></label>
+    <label class="fl">Note for the Nomadwise team (optional)<textarea id="bid-note" rows="2" maxlength="1000">${esc(BIDBOX.note||"")}</textarea></label>
+    <div class="acts" style="margin-top:10px"><button class="btn primary" id="bid-send" ${sending?"disabled":""}>${sending?"Sending…":"Send offer"}</button><button class="btn" id="bid-x">Cancel</button></div>
+  </div></div>`;
+}
 function currentPanel(v){
   const mine=[];
   ARTS.forEach(a=>a.slots.forEach(s=>{const st=status(a,s,v);if(st.k==="mine")mine.push({a,s,st})}));
@@ -666,9 +683,9 @@ function currentPanel(v){
   const other=c?mine.filter(m=>!m.st.fr&&m.s.exp!==c.contractEnd):[];
   if(c){
     const isEx=m=>m.s.pos===1&&(c.exclusive||[]).includes(m.a.name),exOut=other.filter(isEx),ex=contract.filter(m=>(c.exclusive||[]).includes(m.a.name)),nx=contract.filter(m=>!(c.exclusive||[]).includes(m.a.name));
-    const accept=propAccepted?`<div class="done"><b>${peOn(c)&&peChanged(c)?"Proposal sent.":"Proposal accepted."}</b> €${ptot(c)} a month${propOpt.size?", including "+[...propOpt].join(", "):""}. We'll send the agreement to confirm.${PREVIEW?' <span class="muted">Preview only, nothing was sent.</span>':""}</div>`
-      :(propConfirm?`<div class="step"><b>${peOn(c)&&peChanged(c)?"Send this proposal":"Accept the 2027 proposal"} at €${ptot(c)} a month?</b><p class="note">${propOpt.size?"Including "+[...propOpt].join(", ")+". ":"Core renewal only, no optional countries. "}We'll confirm by email and send the agreement.</p><div class="acts"><button class="btn primary" id="prop-yes" ${sending?"disabled":""}>Yes, accept</button><button class="btn ghost" id="prop-back">Back</button></div></div>`
-      :`<div class="acts"><button class="btn primary" id="prop-ok">${peOn(c)&&peChanged(c)?"Send this proposal":"Accept this proposal"}</button></div><p class="note">${peOn(c)?"Adjust the articles above, then send it. We reply within 2 working days.":"Questions or changes? Just reply to our email."}</p>`);
+    const accept=propAccepted?`<div class="done"><b>Proposal sent.</b> €${ptot(c)} a month${propOpt.size?", including "+[...propOpt].join(", "):""}. We'll reply within 2 working days.${PREVIEW?' <span class="muted">Preview only, nothing was sent.</span>':""}</div>`
+      :(propConfirm?`<div class="step"><b>Send your 2027 proposal at €${ptot(c)} a month?</b><p class="note">${propOpt.size?"Including "+[...propOpt].join(", ")+". ":"Core renewal only, no optional countries. "}We'll come back to you within 2 working days.</p><div class="acts"><button class="btn primary" id="prop-yes" ${sending?"disabled":""}>${sending?"Sending…":"Yes, send it"}</button><button class="btn ghost" id="prop-back">Back</button></div></div>`
+      :`<div class="acts"><button class="btn primary" id="prop-ok">Send proposal to Nomadwise</button></div><p class="note">${peOn(c)?"Adjust the articles above, then send it. We reply within 2 working days.":"Questions or changes? Just reply to our email."}</p>`);
     return `<section class="panel"><div class="phead"><h2>${esc(c.title)}</h2><span class="muted">${peOn(c)?[...peInit(c).keep,...peInit(c).add].length+" articles":contract.length+" contract articles"}</span></div>
     <p class="muted">${esc(c.term)}</p>
     <div class="cur">${peOn(c)?`<div class="ci" style="grid-template-columns:minmax(0,1fr) auto"><span>Core renewal, your ${[...peInit(c).keep,...peInit(c).add].length} articles (1st position)</span><span class="mono">€${peMonthly(c)} a month</span></div>`+peEditor(c,v):(c.lines||[]).map(l=>`<div class="ci" style="grid-template-columns:minmax(0,1fr) auto"><span>${esc(l[0].replace("{n}",contract.length))}</span><span class="mono">${esc(l[1])}</span></div>`).join("")}
@@ -687,10 +704,11 @@ function currentPanel(v){
   const item=m=>{const k=key(m.a,m.s.pos);const pill=m.st.fr?'<span class="pill fr">First refusal</span>':(m.st.due?'<span class="pill due">Expired '+fmtD(m.st.exp)+' · held for you until '+fmtD(m.st.hold)+'</span>':(m.st.soon?'<span class="pill soon">Ends '+fmtD(m.st.exp)+'</span>':'<span class="pill ok">Runs to '+fmtD(m.st.exp)+'</span>'));
       return `<label class="ci"><input type="checkbox" id="c-${slug(k)}" data-k="${esc(k)}" ${sel.has(k)?"checked":""} ${submitted?"disabled":""}><span>${esc(m.a.name)} · ${m.s.pos===1?"1st":"2nd"} <span class="muted mono">${eur(priceOf(m.a,m.s.pos))}</span></span>${pill}</label>`};
   return `<section class="panel"><div class="phead"><h2>Your current placements</h2>${now.length&&!submitted?`<button class="btn small" id="renall">${allSel?"Clear renewals":"Renew all "+now.length}</button>`:""}</div>
-    <p class="muted">What you hold now and when each one ends. Tick the ones to renew and they join your selection.</p>
+    <p class="muted">What you hold now and when each one ends. Placements ending in the next two months can be renewed: tick them and they join your selection.</p>
     <h3>Up for renewal <span class="muted mono" style="font-weight:400">${now.length}</span></h3>
-    ${now.length?`<div class="cur">${now.map(item).join("")}</div>`:`<p class="muted" style="font-size:.9rem">Nothing ends in the next 90 days.</p>`}
-    ${later.length?`<details id="later" ${laterOpen?"open":""}><summary style="cursor:pointer;font-weight:600">Running into ${later[0].st.exp.getFullYear()} · ${later.length} placements, ends ${fmtM(later[0].st.exp)} to ${fmtM(later[later.length-1].st.exp)}</summary><div class="cur" style="margin-top:8px">${later.map(item).join("")}</div></details>`:""}</section>`;
+    ${now.length?`<div class="cur">${now.map(item).join("")}</div>`:`<p class="muted" style="font-size:.9rem">Nothing ends in the next two months.</p>`}
+    ${later.length?`<details id="later" ${laterOpen?"open":""}><summary style="cursor:pointer;font-weight:600">Your other placements · ${later.length} <span class="muted" style="font-weight:400">· not up for renewal yet</span></summary><div class="cur" style="margin-top:8px">${later.map(m=>{const op=new Date(m.st.exp);op.setDate(op.getDate()-60);
+        return `<div class="ci" style="grid-template-columns:minmax(0,1fr) auto"><span>${esc(m.a.name)} · ${m.s.pos===1?"1st":"2nd"}</span><span class="pill ok" title="You can renew from ${fmtD(op)}, two months before it ends">Runs to ${fmtD(m.st.exp)} · renew from ${fmtM(op)}</span></div>`}).join("")}</div><p class="note">Renewal opens two months before each placement ends.</p></details>`:""}</section>`;
 }
 
 const salesBit=(label,n,v,c,brands)=>`<span title="${esc((brands||[]).map(x=>x.b+": "+x.n+" sales, "+eur(x.v)).join("\n")+(c!=null?"\nOur commission: "+eur(c):""))}">${label} ${n||0} (${eur(v||0)})</span>`;
@@ -710,7 +728,7 @@ function inventoryPanel(v){
   return `<section class="panel"><div class="phead"><h2>${team?"All placements":"Available placements"}</h2><span class="muted">12-month term · prices per year</span></div>
     ${team?`<p class="note">Views and clicks to eSIM providers over the last 12 months, measured on nomadwise.io. Click rate is clicks per page view. Sales are the last 12 months${SALES_FROM?" (from "+fmtD(new Date(SALES_FROM+"T00:00:00"))+")":""} from the sales feed: the number of sales and, in brackets, what customers paid the brand. Each brand counts towards the position it held: the current holder, or a brand that held 1st or 2nd earlier in the year (from the July positioning sheet and the May and August swaps). 3rd is the brand mentioned further down. “Not placed” is a brand we have no record of in 1st or 2nd on that article. Hover a figure to see the brands and our commission. Admin only: providers see the tier, not these figures.</p>`:""}
     ${team?tiers:""}
-    <div class="legend" aria-label="Key">${[["available","Available"],["selected","Selected"],["mine","Yours"],["reserved","Reserved or in renewal"],["taken","Unavailable"]].map(([c,l])=>`<span class="key ${c}">${l}</span>`).join("")}</div>
+    <div class="legend" aria-label="Key">${[["available","Available"],["selected","Selected"],["mine","Yours"],["reserved","Reserved or in renewal"],["taken","Unavailable"]].concat(team?[]:[["bid","Offers open"]]).map(([c,l])=>`<span class="key ${c}">${l}</span>`).join("")}</div>
     <div class="regs" role="group" aria-label="Filter by region"><button class="reg" data-reg="" aria-pressed="${!filt.regions.size}">All regions</button>${regs.map(r=>`<button class="reg" data-reg="${esc(r)}" aria-pressed="${filt.regions.has(r)}">${esc(r)} <span class="mono">${ARTS.filter(a=>regionOf[a.name]===r).length}</span></button>`).join("")}</div>
     <div class="filters"><input type="search" id="f-q" placeholder="Search a country or city" value="${esc(filt.q)}" aria-label="Search articles">
       <select id="f-tier" aria-label="Tier"><option value="">All tiers</option>${["Top page"].concat(S.tiers.map(t=>t.name)).map(n=>`<option ${filt.tier===n?"selected":""}>${esc(n)}</option>`).join("")}</select>
@@ -733,6 +751,8 @@ function seat(a,s,v,team){
     const right=renew?`<span class="badge ${st.due?"due":""}">${on?eur(priceOf(a,s.pos)):(c?"To renew":"To renew · "+eur(priceOf(a,s.pos)))}</span>`:"";
     const canR=renew&&!c&&!team&&!submitted;
     return `<button class="seat mine${renew?" renew":""}${on?" selected":""}" ${canR?`data-k="${esc(k)}" aria-pressed="${on}"`:(team?"disabled":`aria-disabled="true" data-tap="${esc(k)}" data-tapl="${esc(lab+", "+sub)}"`)} title="${esc(c&&renew?"Renew through your 2027 proposal":lab+", "+sub)}">${pos}<span class="st">${esc(lab)}</span>${right}<span class="sub">${esc(sub)}</span></button>`;}
+  if(st.bid&&!team){const sent=BIDS.find(b=>b.item===k);
+    return `<button class="seat bid${sent?" sent":""}" ${sent?`aria-disabled="true"`:`data-bid="${esc(k)}"`} title="${esc(sent?"Your offer of "+eur(sent.offer)+" is with us":"Held by another partner until "+fmtD(st.exp)+". Make an offer to take it over")}">${pos}<span class="st">${sent?"Offer sent · "+eur(sent.offer):"Make an offer"}</span><span class="pr">${sent?"":"List "+eur(priceOf(a,s.pos))}</span><span class="sub">${st.due?"Held for renewal now":"Ends "+fmtD(st.exp)}</span></button>`;}
   const cls=st.k+(on?" selected":"")+(team?" plain":"")+(st.oneEach?" one":"");
   const canSel=st.sel && !team && !submitted;
   return `<button class="seat ${cls}" ${canSel?`data-k="${esc(k)}" aria-pressed="${on}"`:(team||submitted?"disabled":`aria-disabled="true" data-tap="${esc(k)}" data-tapl="${esc(st.label)}"`)} title="${esc(st.label)}">
@@ -764,7 +784,7 @@ function railPanel(v){
     ${items.length||reviews?`<div class="sel-list">${items.map(([k,x])=>`<div class="sel-item"><span>${esc(k)}${x.kind==="renew"?' <span class="muted">renewal</span>':""}</span><span class="mono">${eur(x.price)}</span><button class="x" data-rm="${esc(k)}" aria-label="Remove ${esc(k)}">×</button></div>`).join("")}
       ${reviews?`<div class="sel-item"><span>Review article × ${reviews}</span><span class="mono">${eur(T.addons)}</span><span></span></div>`:""}</div>`:`<p class="muted" style="font-size:.9rem">Tap an available slot to add it. Your current placements can be renewed from the list on the left.</p>`}
     <div class="sum"><span>List price</span><span class="mono">${eur(T.list+T.addons)}</span></div>
-    ${T.disc?`<div class="sum"><span>Package discount (${T.elig} Premium or Standard, ${S.discPct}%)</span><span class="mono">−${eur(T.disc)}</span></div>`:`<div class="note">${S.discMin} or more Premium or Standard placements: ${S.discPct}% off those placements.${T.elig?" You have "+T.elig+".":""}</div>`}
+    ${T.disc?`<div class="sum"><span>Package discount ${S.discPct}%<small>${T.elig} Premium or Standard placements</small></span><span class="mono">−${eur(T.disc)}</span></div>`:`<div class="note">${S.discMin} or more Premium or Standard placements: ${S.discPct}% off those placements.${T.elig?" You have "+T.elig+".":""}</div>`}
     <div class="sum total"><span>Package price</span><span class="mono">${eur(T.total)}</span></div>
     ${confirmOffer?`<div class="step confirm-offer"><b>Send this to Nomadwise?</b>
       <div class="sum"><span>${T.slots+(reviews?reviews:0)} ${T.slots+(reviews?reviews:0)===1?"item":"items"} · list price</span><span class="mono">${eur(T.list+T.addons)}</span></div>
@@ -817,6 +837,12 @@ async function submitOffer(items,list,amt,note,kind){
 }
 
 function bind(){
+  document.querySelectorAll("[data-bid]").forEach(el=>el.addEventListener("click",()=>{BIDBOX={k:el.dataset.bid};track("bid_open",{item:el.dataset.bid});render();const i=$("bid-amt");if(i){i.focus();i.select()}}));
+  const bx=$("bid-x");if(bx)bx.addEventListener("click",()=>{BIDBOX=null;render()});
+  const bsd=$("bid-send");if(bsd)bsd.addEventListener("click",async()=>{if(sending||!BIDBOX)return;const amt=Math.round(+$("bid-amt").value||0);if(amt<=0){toast("Enter an amount");return}
+    const note=$("bid-note").value;const k=BIDBOX.k;const [name,p]=k.split(" · ");const a=ARTS.find(x=>x.name===name);const lp=a?priceOf(a,p==="1st"?1:2):0;
+    BIDBOX.amt=amt;BIDBOX.note=note;
+    if(await submitOffer([k],lp,amt,note,"bid")){BIDS.push({item:k,offer:amt,at:new Date().toISOString()});track("bid_sent",{item:k,offer:amt,list:lp});BIDBOX=null;render();toast(PREVIEW?"Preview only, nothing was sent":"Offer sent. We'll come back to you within 2 working days")}});
   const roiI=$("roi");if(roiI)roiI.addEventListener("change",()=>{const r=Math.min(5,Math.max(0.5,+roiI.value||1.5));roiSave(r);render()});
   const pbm=$("pb-m");if(pbm)pbm.addEventListener("change",()=>{const m=Math.max(0,+pbm.value||0);const L=pbSetList();PB.disc=L?Math.min(.9,Math.max(-1,1-m*12/L)):0;pbSave();render()});
   const pbd=$("pb-d");if(pbd)pbd.addEventListener("change",()=>{PB.disc=Math.min(.9,Math.max(0,(+pbd.value||0)/100));pbSave();render()});
@@ -837,6 +863,8 @@ function bind(){
     S.contracts[p].prices=edit.prices;delete edit.prices;S.contracts[p].edit=Object.assign(edit,{on:true,shared_at:new Date().toISOString()});S.contracts[p].base=base;render();toast(p+" now sees this scenario at €"+base+" a month and can adjust it")});
   const pbu=$("pb-unshare");if(pbu)pbu.addEventListener("click",async()=>{const p=PB.p;const {error}=await sb.rpc("partners_team_share_proposal",{p_session:SESSION,p_provider:p,p_edit:null,p_base:null});
     if(error){toast(error.message||"Couldn't update");return}delete S.contracts[p].edit;render();toast(p+" sees the fixed proposal again")});
+  const pbnb=$("pb-nobid");if(pbnb)pbnb.addEventListener("change",async()=>{const p=PB.p,on=pbnb.checked;const {error}=await sb.rpc("partners_team_no_bids",{p_session:SESSION,p_provider:p,p_on:on});
+    if(error){toast(error.message||"Couldn't save");pbnb.checked=!on;return}S.contracts[p].noBids=on;toast(on?p+"'s articles are closed to offers":p+"'s articles open to offers in their last two months")});
   const pbc=$("pb-copy");if(pbc)pbc.addEventListener("click",()=>{const p=PB.p;const el=document.querySelector("#d-pb .kgrid");
     const dropped=PB.cur.filter(n=>!PB.keep.has(n)),added=[...PB.add];
     const txt=`${p} 2027 scenario\n${PB.keep.size+added.length} articles at €${PB.monthly} a month (€${PB.monthly*12} a year)\nKeeping ${PB.keep.size} of ${PB.cur.length}.\nDropping: ${dropped.join(", ")||"none"}\nAdding: ${added.join(", ")||"none"}\nOptional extras: ${[...PB.opt].map(n=>n+" €"+PB.optPrice[n]+"/mo").join(", ")||"none"}\n\n${el?el.innerText.replace(/\n+/g,"\n"):""}`;
@@ -914,7 +942,7 @@ function bind(){
   document.querySelectorAll("[data-rd]").forEach(el=>el.addEventListener("input",()=>{drafts[el.dataset.rd]=el.value}));
   document.querySelectorAll("[data-rdx]").forEach(el=>el.addEventListener("click",()=>{delete drafts[el.dataset.rdx];render()}));
   document.querySelectorAll("[data-dr]").forEach(el=>el.addEventListener("click",()=>{const p=el.dataset.dr;
-    const L=[];ARTS.forEach(a=>a.slots.forEach(s=>{const st=status(a,s,null);if(s.prov===p&&st.exp&&(st.due||st.soon))L.push({a,s,st})}));
+    const L=[];ARTS.forEach(a=>a.slots.forEach(s=>{const st=status(a,s,null);if(s.prov===p&&st.exp&&(st.due||st.near))L.push({a,s,st})}));
     const first=L.reduce((m,x)=>x.st.exp<m?x.st.exp:m,L[0].st.exp);const past=first<TODAY;
     drafts[p]=`Hi ${namesOf(p).length?namesOf(p).join(" and "):p+" team"},\n\nA quick heads-up that ${L.length===1?"one of your Nomadwise placements "+(past?"ended on":"ends on"):L.length+" of your Nomadwise placements "+(past?"have ended or end soon, the first on":"end soon, the first on")} ${fmtD(first)}.\n\nYou can see them all, with renewal prices and anything else that's open, on your private partner page. Tick what you'd like to keep and send us a package offer there, or just reply here.\n\nBest,\nJonathan`;
     render()}));
