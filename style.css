@@ -431,3 +431,8 @@ button.glance:disabled{cursor:default;opacity:.7}
 .acc-g td{background:var(--bg);font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:6px 10px}
 .int-arts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .int-arts .int-a{flex:1 1 220px;min-width:180px}
+.kgrid .kout{border-color:color-mix(in srgb,var(--internal) 35%,var(--line));background:var(--internal-soft)}
+.kgrid .kout .muted b{font-size:inherit}
+.kgrid>.kout{order:1}
+.kgrid>.kplan{order:2}
+.gsub{font-size:.76rem;color:var(--muted);font-weight:400}
