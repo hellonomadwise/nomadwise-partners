@@ -49,13 +49,13 @@ function deviceInfo(){const ua=navigator.userAgent;
   let tz="";try{tz=Intl.DateTimeFormat().resolvedOptions().timeZone}catch(e){}
   return {device:dev,browser:br,os,tz,w:window.innerWidth,lang:navigator.language||""}}
 function track(kind,detail){
-  if(ROLE!=="provider"||!SESSION||PREVIEW)return;
+  if(!ROLE||!SESSION||PREVIEW)return;
   const d=Object.assign({},detail||{},{v:VISIT_ID});
   sb.rpc("partners_track",{p_session:SESSION,p_kind:kind,p_detail:d}).then(()=>{},()=>{});
 }
 let visStart=Date.now();
 function flushTime(){
-  if(ROLE!=="provider"||!SESSION||PREVIEW)return;
+  if(!ROLE||!SESSION||PREVIEW)return;
   const secs=Math.round((Date.now()-visStart)/1000);visStart=Date.now();
   if(secs<3||secs>4*3600)return;
   try{fetch(SB_URL+"/rest/v1/rpc/partners_track",{method:"POST",keepalive:true,headers:{"apikey":SB_KEY,"Content-Type":"application/json"},body:JSON.stringify({p_session:SESSION,p_kind:"time_on_page",p_detail:{seconds:secs,scroll:maxScroll,v:VISIT_ID}})})}catch(e){}
@@ -222,7 +222,7 @@ async function load(){
   if(data.role==="team"){
     ROLE="team"; ME=data.me; applyTeamData(data);
     mode="team"; asProv=(PROVIDERS.find(p=>S.contracts[p.name])||PROVIDERS[0]||{name:"__new"}).name;
-    return render();
+    visStart=Date.now();render();teamTracking();track("visit",Object.assign(deviceInfo(),{team:true}));return;
   }
   showPartner(data);
 }
@@ -263,7 +263,7 @@ function applyTeamData(data){
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   SALES_FROM=data.salesFrom||null; PAYMENTS=data.payments||[]; SHOWN=data.shown||{}; SCEN=data.scenarios||{};
   ARTS=(data.articles||[]).map(r=>({name:r.name,region:r.region,views:r.views,clicks:r.clicks,sales:r.sales||null,slots:[{pos:1,prov:r.p1_prov||"",exp:r.p1_exp||"",flag:r.p1_flag||""},{pos:2,prov:r.p2_prov||"",exp:r.p2_exp||"",flag:r.p2_flag||""}]}));
-  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=data.activity||[];
+  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=data.activity||[]; TEAM_EV=data.teamActivity||[];
   offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailsOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
   setRegions();
 }
@@ -438,7 +438,15 @@ function resetSel(){sel.clear();reviews=0;submitted=null;propOpt.clear();propAcc
 const mins=s=>s<60?s+" sec":(s<3600?Math.round(s/60)+" min":(s/3600).toFixed(1)+" h");
 const ago=d=>{const s=(Date.now()-d)/1000;if(s<90)return "just now";if(s<3600)return Math.round(s/60)+" min ago";if(s<86400)return Math.round(s/3600)+" h ago";const n=Math.round(s/86400);return n===1?"yesterday":n+" days ago"};
 function evText(e){const d=e.detail||{};switch(e.kind){
-  case "visit":return "opened their page";
+  case "visit":return d.team?"opened the admin view":"opened their page";
+  case "team_open":return "opened <b>"+esc(d.section)+"</b>";
+  case "team_offer":return (d.action?"chose <b>"+esc(d.action)+"</b> on ":"opened ")+esc(d.from)+"'s "+(d.kind==="bid"?"takeover offer":d.kind==="proposal"?"proposal":"request");
+  case "team_reply":return "<b>approved the reply</b> to "+esc(d.from)+" ("+esc(d.action)+")";
+  case "team_preview":return "opened <b>"+esc(d.partner)+"</b>'s page as they see it";
+  case "team_best":return "built the best proposal for "+esc(d.partner);
+  case "team_share":return "<b>shared the proposal</b> with "+esc(d.partner);
+  case "team_glance":return "looked at "+esc(d.what);
+  case "team_talk":return "copied the talking points for "+esc(d.partner);
   case "slot_add":return (d.renewal?"ticked to renew ":"added ")+"<b>"+esc(d.item)+"</b>"+(d.price!=null?" ("+eur(d.price)+")":"");
   case "slot_remove":return "removed "+esc(d.item);
   case "filter_region":return "looked at <b>"+esc(d.region)+"</b>";
@@ -550,6 +558,16 @@ function activityPanel(){
     ${topI.length?`<details class="rg" style="margin-top:6px"><summary style="cursor:pointer;font-weight:600">Slots partners have picked but not sent · ${topI.length}</summary><div class="scroll" style="margin-top:8px"><table class="tbl"><thead><tr><th>Slot</th><th>In the selection of</th></tr></thead><tbody>${topI.map(([i,ps])=>`<tr><td>${esc(i)}</td><td>${ps.map(p=>esc(who(p.email))+" <span class='muted'>("+esc(p.provider)+")</span>").join(", ")}</td></tr>`).join("")}</tbody></table></div></details>`:""}
   </section>`;
 }
+function teamActivityPanel(){if(!TEAM_EV.length)return "";
+  const ev=TEAM_EV.map(e=>Object.assign({},e,{t:new Date(e.at)})).sort((x,y)=>x.t-y.t);const byP={};ev.forEach(e=>{(byP[e.email]=byP[e.email]||[]).push(e)});
+  const tm=t=>String(t.getHours()).padStart(2,"0")+":"+String(t.getMinutes()).padStart(2,"0");
+  return Object.values(byP).map(L=>{const name=L[0].name||L[0].email;const vis=[];let cur=null;
+    L.forEach(e=>{const d=e.detail||{};if(e.kind==="visit"||!cur||(d.v&&cur.v&&d.v!==cur.v)){cur={v:d.v,start:e.t,info:e.kind==="visit"?d:null,steps:[],secs:0};vis.push(cur)}
+      if(e.kind==="time_on_page")cur.secs+=+d.seconds||0;else if(e.kind!=="visit")cur.steps.push(e)});
+    const last=L[L.length-1].t,wk=vis.filter(v=>v.start>new Date(Date.now()-7*864e5)).length;
+    return `<div class="qi"><div class="h"><span><b>${esc(name)}</b> <span class="muted">· last seen ${ago(last)} · ${wk} ${wk===1?"visit":"visits"} this week</span></span></div>
+      <div class="rgs">${vis.slice().reverse().slice(0,30).map(v=>`<details class="rg"><summary><b>${fmtD(v.start)}, ${tm(v.start)}</b> · ${v.secs?mins(v.secs):"under a minute"} · ${v.steps.length} ${v.steps.length===1?"step":"steps"}${v.info&&v.info.device?` <span class="muted">· ${esc(v.info.device)}, ${esc(v.info.browser)}</span>`:""}</summary>
+        <div class="cur" style="margin:6px 0 4px 14px">${v.steps.length?v.steps.map(s=>`<div class="ci" style="grid-template-columns:auto minmax(0,1fr);padding:4px 0"><span class="muted mono" style="font-size:.76rem">${tm(s.t)}</span><span style="font-size:.86rem">${evText(s)}</span></div>`).join(""):'<p class="muted" style="font-size:.86rem">Opened it and looked around.</p>'}</div></details>`).join("")}</div></div>`}).join("")}
 function activityTitle(){const wk=ACT_EV.filter(e=>e.kind==="visit"&&new Date(e.at)>new Date(Date.now()-7*864e5)).length;return "Partner activity"+(wk?` <span class="muted" style="font-weight:500;font-size:.9rem">· ${wk} ${wk===1?"visit":"visits"} this week</span>`:"")}
 
 // Sales of one brand on one article, last 12 months, any position: count, customer value, our commission
@@ -820,7 +838,7 @@ function teamPanels(){
       <input id="na-name" placeholder="Name, e.g. Simon Martin" aria-label="Name" required>
       <input id="na-email" type="email" placeholder="name@company.com" aria-label="Email" required>
       <select id="na-role" aria-label="Role"><option value="partner">Partner</option><option value="admin">Admin</option></select>
-      <select id="na-prov" aria-label="Partner company">${PROVIDERS.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join("")}<option value="__new">New partner company…</option></select>
+      <select id="na-prov" aria-label="Partner company" required><option value="" disabled selected>Select a partner company</option>${PROVIDERS.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join("")}<option value="__new">New partner company…</option></select>
       <input id="na-co" placeholder="Company name, e.g. Airalo" aria-label="New partner company" hidden>
       <button class="btn small primary" type="submit">Give access</button></form>
     <p class="note">Giving access doesn't email anyone. Tell them to sign in at partners.nomadwise.io, or press Email sign-in link.</p></section>
@@ -838,7 +856,7 @@ function teamPanels(){
     ${order.filter(n=>cg[n]).map(n=>`<tr><td><b>${esc(n)}</b></td><td class="mono">${cnt[n]}</td><td class="mono">${eur(cg[n][1])}</td><td class="mono">${eur(cg[n][2])}</td><td class="mono">${eur(cg[n][1]+cg[n][2])}</td></tr>`).join("")}
     <tr><td><b>Open now</b></td><td></td><td class="mono">${eur(openT[1])}</td><td class="mono">${eur(openT[2])}</td><td class="mono">${eur(openT[1]+openT[2])}</td></tr></tbody></table></div>
     <p class="note">Contract deals are priced separately, so actual revenue on those slots differs from list.</p></section>`;
-  return `<p class="note" style="margin-top:-8px">Two things need us: offers and renewals. Everything else is folded away below.</p>`+inbox+ren+fold("d-pb","Proposal builder",pbPanel())+fold("d-act",activityTitle(),activityPanel())+fold("d-how","How this works",how)+fold("d-num","Inventory and capacity",kpi+cap)+fold("d-pr","Prices and rules",prices)+fold("d-acc","Who has access",acc);
+  return `<p class="note" style="margin-top:-8px">Two things need us: offers and renewals. Everything else is folded away below.</p>`+inbox+ren+fold("d-pb","Proposal builder",pbPanel())+fold("d-act",activityTitle(),activityPanel())+(TEAM_EV.length?fold("d-team","Team activity <span class=\"muted\" style=\"font-weight:500;font-size:.9rem\">· only you see this</span>",`<section class="panel"><div class="queue">${teamActivityPanel()}</div></section>`):"")+fold("d-how","How this works",how)+fold("d-num","Inventory and capacity",kpi+cap)+fold("d-pr","Prices and rules",prices)+fold("d-acc","Who has access",acc);
 }
 
 
@@ -972,6 +990,20 @@ function inventoryPanel(v){
 }
 
 // Admin rows: tier chip (tap to change), then views, clicks and sales on one quiet line
+let TEAM_EV=[];
+// Admin steps, recorded only for people on the team watch list (the database decides)
+function teamTracking(){if(teamTracking.on)return;teamTracking.on=true;
+  const nm=t=>String(t||"").replace(/\s+/g," ").trim().slice(0,60);
+  document.addEventListener("click",e=>{const el=e.target.closest&&e.target.closest("button,a");if(!el||PREVIEW)return;
+    if(el.dataset.oa){const [i,k]=el.dataset.oa.split("|");const o=offers[+i];if(o)track("team_offer",{from:o.from,kind:o.kind,action:k})}
+    else if(el.dataset.send){const o=offers[+el.dataset.send];if(o)track("team_reply",{from:o.from,action:o.action})}
+    else if(el.id==="pv-open"){const s=$("as-prov");track("team_preview",{partner:s?(s.value==="__new"?"a new partner":s.value):""})}
+    else if(el.id==="pb-best"||el.dataset.bestfor)track("team_best",{partner:el.dataset.bestfor||(PB&&PB.p)||""});
+    else if(el.id==="pb-share")track("team_share",{partner:(PB&&PB.p)||""});
+    else if(el.id==="pb-talk")track("team_talk",{partner:(PB&&PB.p)||""});
+    else if(el.dataset.glance)track("team_glance",{what:nm(el.querySelector(".gl")&&el.querySelector(".gl").firstChild.textContent)})},true);
+  document.addEventListener("toggle",e=>{const d=e.target;if(!d||!d.open||PREVIEW||!d.matches||!d.matches("details.fold,details.ren,details.qi"))return;
+    const s=d.querySelector("summary");track("team_open",{section:nm(s&&s.textContent)})},true)}
 let GEDIT=null, OPEN_NOW=[0,0,0]; const GEXP=new Set();
 // ---------- At a glance: tap a number to see what's behind it ----------
 let GLANCE=null;
@@ -1328,10 +1360,10 @@ function bind(){
     REMS[p]={sent_at:new Date().toISOString()};delete drafts[p];render()}));
   // team: access
   const nr=$("na-role"),np=$("na-prov");
-  const sync=()=>{if(!nr)return;np.hidden=nr.value!=="partner";$("na-co").hidden=nr.value!=="partner"||np.value!=="__new"};
+  const sync=()=>{if(!nr)return;np.hidden=nr.value!=="partner";np.required=nr.value==="partner";$("na-co").hidden=nr.value!=="partner"||np.value!=="__new"};
   if(nr){nr.addEventListener("change",sync);np.addEventListener("change",sync);sync()}
   const af=$("accform");if(af)af.addEventListener("submit",async e=>{e.preventDefault();
-    let prov=null;if(nr.value==="partner"){prov=np.value==="__new"?$("na-co").value.trim():np.value;if(!prov){toast("Add the company name");return}}
+    let prov=null;if(nr.value==="partner"){if(!np.value){toast("Select a partner company");np.focus();return}prov=np.value==="__new"?$("na-co").value.trim():np.value;if(!prov){toast("Add the company name");return}}
     const {error}=await sb.rpc("partners_team_access",{p_session:SESSION,p_name:$("na-name").value,p_email:$("na-email").value,p_provider:prov,p_action:"add"});
     if(error){toast(error.message);return}toast("Access given. They can now sign in with that email.");openD.add("d-acc");reloadTeam()});
   document.querySelectorAll("[data-sendlink]").forEach(el=>el.addEventListener("click",async()=>{
