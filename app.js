@@ -614,6 +614,26 @@ function pbBest(){
   PB.best={out:PB.cur.filter(n=>!pick.has(n)),swapIn:inn.filter(n=>!joins.includes(n)),joins,opt:[...PB.opt],skipped:(c.options||[]).filter(n=>!PB.opt.has(n))};
   pbSave();render();
 }
+// Talking points for a call: reach and share of buyers, no euro figures
+function pbTalk(){const p=PB.p,c=S.contracts[p];const A=n=>ARTS.find(x=>x.name===n);const pct=(x,y)=>y?Math.round((x/y-1)*100):0;const sg=n=>(n>=0?"+":"")+n+"%";
+  const cur=PB.cur.map(A).filter(Boolean),keep=cur.filter(a=>PB.keep.has(a.name)),add=[...PB.add].map(A).filter(Boolean),out=cur.filter(a=>!PB.keep.has(a.name)),ext=[...PB.opt].map(A).filter(Boolean);
+  const own=a=>brandSales(a,p).v,top=a=>+((a.sales||{}).v1)||0,cl=L=>L.reduce((t,a)=>t+(+a.clicks||0),0);
+  const sNow=cur.reduce((t,a)=>t+own(a),0),sCore=keep.reduce((t,a)=>t+own(a),0)+add.reduce((t,a)=>t+top(a)*NEW_FACTOR,0),sAll=sCore+ext.reduce((t,a)=>t+top(a)*NEW_FACTOR,0);
+  const cNow=cl(cur),cCore=cl(keep)+cl(add),cAll=cCore+cl(ext);
+  const joins=add.filter(a=>{const h=famHead(a.name);return h&&h!==a.name&&PB.cur.includes(h)}),swapIn=add.filter(a=>!joins.includes(a));
+  const zero=out.filter(a=>!own(a)).length,outS=out.reduce((t,a)=>t+own(a),0),inTop=add.reduce((t,a)=>t+top(a),0);
+  const nowM=+(c.current&&c.current.monthly)||+c.base,M=PB.fixed?PB.fixedM:PB.monthly;const L=[];
+  L.push(p+" renewal: talking points (last 12 months, our own tracking, no euro figures)","");
+  L.push("1. "+(M===nowM?"Same monthly fee":"Monthly fee "+sg(pct(M,nowM)))+", "+(keep.length+add.length===cur.length?"same "+cur.length+" articles.":(keep.length+add.length)+" articles (now "+cur.length+")."));
+  if(out.length)L.push("2. "+out.length+" quiet pages out ("+out.map(a=>a.name).join(", ")+"). They brought "+p+" very little"+(zero?", and "+zero+" had no sales at all":"")+".");
+  if(add.length)L.push("3. "+add.length+" pages in"+(cl(out)?", sending "+(cl(add)/Math.max(cl(out),1)).toFixed(1).replace(/\.0$/,"")+" times as many readers through to eSIM providers":"")+(outS?", and the top spot on them sold about "+Math.round(inTop/outS)+" times more last year":"")+".");
+  if(joins.length)L.push("4. Whole destinations: "+joins.map(a=>a.name+" joins "+famHead(a.name)).join(", ")+". One brand across each country and its cities.");
+  if(swapIn.length)L.push("   Swapped in: "+swapIn.map(a=>a.name).join(", ")+".");
+  if(ext.length)L.push("5. Add-ons on top: "+ext.map(a=>a.name).join(", ")+".");
+  L.push("","Readers clicking through to an eSIM provider on their pages: "+sg(pct(cCore,cNow))+" from the swaps"+(ext.length?", "+sg(pct(cAll,cNow))+" with the add-ons":"")+".");
+  L.push("Expected sales, cautious: "+sg(pct(sCore,sNow))+" from the swaps"+(ext.length?", "+sg(pct(sAll,sNow))+" with the add-ons":"")+". New pages are counted at 80% of what the top spot sold last year.");
+  L.push("","Keep to ourselves: our commission, their net figure, the discount off list, what each article costs inside the deal.");
+  return L.join("\n")}
 function pbBestNote(){const b=PB&&PB.best;if(!b)return "";const L=x=>esc(x.join(", "));
   return `<div class="note best-note"><b>Best proposal: same ${eur(PB.fixedM)} a month, ${PB.keep.size+PB.add.size} articles.</b>
     <ul>${b.joins.length?`<li><b>Joins its country:</b> ${L(b.joins)}. Free now, and they go with countries ${esc(PB.p)} already has.</li>`:""}
@@ -655,7 +675,7 @@ function pbPanel(){
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end"><label class="fl" style="max-width:210px">Pricing<select id="pb-mode"><option value="fixed" ${PB.fixed?"selected":""}>Fixed monthly price, swap articles</option><option value="disc" ${PB.fixed?"":"selected"}>Discount off list</option></select></label>
       ${PB.fixed?"":`<label class="fl" style="max-width:150px">Discount off list (%)<input type="number" id="pb-d" min="0" max="90" step="1" value="${Math.round(PB.disc*100)}"></label>`}
       <label class="fl" style="max-width:150px">Monthly price (€)<input type="number" id="pb-m" min="0" value="${M}"></label>${PB.fixed?`<span class="muted" style="font-size:.84rem;padding-bottom:8px">${listT?Math.round(PB.disc*100)+"% below list":""}</span>`:""}</div>
-      <div class="acts"><button class="btn small primary" id="pb-best" title="Same price, the strongest sellers in, and the optional extras that pay for them">Build the best proposal</button>${PB.fixed?"":`<button class="btn small" id="pb-dropneg">Drop all where their net is negative</button>`}<button class="btn small ghost" id="pb-reset">Reset to current</button><button class="btn small ghost" id="pb-copy">Copy summary</button><label class="chk" style="font-size:.86rem" title="When on, other partners can't make takeover offers on ${esc(p)}'s slots"><input type="checkbox" id="pb-nobid" ${c.noBids?"checked":""}> Keep ${esc(p)}'s articles closed to offers</label><button class="btn small primary" id="pb-share">${c.edit&&c.edit.on?"Update what "+esc(p)+" sees":"Share with "+esc(p)+" to adjust"}</button>${c.edit&&c.edit.on?`<button class="btn small ghost" id="pb-unshare">Stop sharing</button>`:""}</div>
+      <div class="acts"><button class="btn small primary" id="pb-best" title="Same price, the strongest sellers in, and the optional extras that pay for them">Build the best proposal</button>${PB.fixed?"":`<button class="btn small" id="pb-dropneg">Drop all where their net is negative</button>`}<button class="btn small ghost" id="pb-reset">Reset to current</button><button class="btn small ghost" id="pb-copy">Copy summary</button><button class="btn small ghost" id="pb-talk" title="Percentages and reach only, no euro figures, for a call">Copy talking points</button><label class="chk" style="font-size:.86rem" title="When on, other partners can't make takeover offers on ${esc(p)}'s slots"><input type="checkbox" id="pb-nobid" ${c.noBids?"checked":""}> Keep ${esc(p)}'s articles closed to offers</label><button class="btn small primary" id="pb-share">${c.edit&&c.edit.on?"Update what "+esc(p)+" sees":"Share with "+esc(p)+" to adjust"}</button>${c.edit&&c.edit.on?`<button class="btn small ghost" id="pb-unshare">Stop sharing</button>`:""}</div>
     </div>
     ${c.edit&&c.edit.on?`<p class="note" style="color:var(--accent)"><b>Shared with ${esc(p)}${c.edit.shared_at?" on "+fmtD(new Date(c.edit.shared_at)):""}.</b> Their page shows ${c.edit.keep.length+c.edit.add.length} articles at ${Math.round((c.edit.disc||0)*100)}% off list (€${c.base} a month). They can remove articles, add free ones and send it back; it lands in the offers inbox and by email.</p>`:""}
     ${pbBestNote()}
@@ -1162,6 +1182,7 @@ function bind(){
   document.querySelectorAll("[data-pba]").forEach(el=>el.addEventListener("change",()=>{pbFam(el.dataset.pba,el.checked);pbSave();render()}));
   const pbr=$("pb-reset");if(pbr)pbr.addEventListener("click",()=>{const p=PB.p;delete SCEN[p];PB=pbInit(p);pbSave();render()});
   document.querySelectorAll("[data-bestfor]").forEach(el=>el.addEventListener("click",()=>{const p=el.dataset.bestfor;if(!PB||PB.p!==p)PB=pbInit(p);openD.add("d-pb");pbBest();setTimeout(()=>{const d=$("d-pb");if(d)d.scrollIntoView({behavior:"smooth",block:"start"})},50)}));
+  const pbt=$("pb-talk");if(pbt)pbt.addEventListener("click",async()=>toast(await copyText(pbTalk())?"Talking points copied, no euro figures":"Couldn't copy. Try again"));
   const pbb=$("pb-best");if(pbb)pbb.addEventListener("click",pbBest);
   const pbs5=$("pb-swap5");if(pbs5)pbs5.addEventListener("click",()=>{const p=PB.p,c=S.contracts[p];
     const kept=PB.cur.filter(n=>PB.keep.has(n)).map(n=>ARTS.find(a=>a.name===n)).filter(Boolean);
