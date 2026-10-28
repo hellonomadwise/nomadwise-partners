@@ -26,7 +26,7 @@ const REGION_ORDER=["Europe","Asia","Caucasus & Central Asia","Middle East","Afr
 // ---------- state ----------
 let ROLE=null;           // "team" | "provider"
 let ME=null;             // provider name, or the team member's email
-let PAYMENTS=[], SHOWN={}, SCEN={}, PB=null, BIDS=[], BIDBOX=null, NOBID=new Set(); let SESSION=null; let ACCESS=[]; let MYNAME=""; let ACT_EV=[]; let PREVIEW=false; let SALES_FROM=null;
+let PAYMENTS=[], SHOWN={}, SHOWN_AT=null, SCEN={}, PB=null, BIDS=[], BIDBOX=null, NOBID=new Set(); let SESSION=null; let ACCESS=[]; let MYNAME=""; let ACT_EV=[]; let PREVIEW=false; let SALES_FROM=null;
 let S={tiers:[],setPrices:{},packages:{},contracts:{},firstRefusal:{articles:[]},discTiers:[],review:0,discMin:0,discPct:0};
 let ARTS=[], TOTALS=null, PROVIDERS=[], TEAM=[], REMS={}, offers=[];
 const regionOf={};
@@ -163,7 +163,7 @@ function status(a,s,viewer){
     st.bid=true;st.label=st.due?"In renewal · offers open":"Ends "+fmtD(st.exp)+" · offers open";}
   // Admin: who is on the slot when nobody has paid for it (from the July 2026 positioning sheet)
   if(viewer===null&&!st.paid&&!(s.prov&&s.exp)){const sh=(SHOWN[a.name]||{})[String(s.pos)];
-    st.who=(st.who?st.who+" · ":"")+(sh?"Showing: "+sh+" (unpaid, Jul 2026 sheet)":"Showing: not recorded");}
+    st.who=(st.who?st.who+" · ":"")+(sh?"Showing: "+sh+" (unpaid, "+shownLbl()+")":"Showing: not recorded");}
   if(viewer===null&&s.prov&&S.contracts[s.prov]&&st.who&&s.pos===1)st.who+=(S.contracts[s.prov].exclusive||[]).includes(a.name)?" · exclusive":(s.exp===S.contracts[s.prov].contractEnd?" · non-exclusive":"");
   return st;
 }
@@ -261,7 +261,7 @@ async function startPreview(company){
 function exitPreview(){location.reload()}
 function applyTeamData(data){
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
-  SALES_FROM=data.salesFrom||null; PAYMENTS=data.payments||[]; SHOWN=data.shown||{}; SCEN=data.scenarios||{};
+  SALES_FROM=data.salesFrom||null; PAYMENTS=data.payments||[]; SHOWN=data.shown||{};SHOWN_AT=data.shownAt||null; SCEN=data.scenarios||{};
   ARTS=(data.articles||[]).map(r=>({name:r.name,region:r.region,views:r.views,clicks:r.clicks,sales:r.sales||null,mon:parseMonthly(r.monthly),slots:[{pos:1,prov:r.p1_prov||"",exp:r.p1_exp||"",flag:r.p1_flag||""},{pos:2,prov:r.p2_prov||"",exp:r.p2_exp||"",flag:r.p2_flag||""}]}));
   PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=data.activity||[]; TEAM_EV=data.teamActivity||[]; MON_TOT=null;
   offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailsOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
@@ -1071,7 +1071,7 @@ function rowDetail(a,t,g){
     <div class="rd-col"><span class="eyebrow">Group</span><div>${teamMetaChip(a,g)}</div>
       <span class="eyebrow" style="margin-top:8px">Traffic, 12 months</span><div>${a.views.toLocaleString("en-GB")} views · ${a.clicks.toLocaleString("en-GB")} clicks${a.views>=50?" · "+Math.round(a.clicks/a.views*100)+"% click rate":""} ${trendChip(a)}</div>
       ${a.mon?`<div class="mbar-wrap">${monBars(a)}<span class="muted" style="font-size:.74rem">Grey: views. Green: clicks to providers. Hover a month for numbers. The last bar is this month so far.</span></div>`:""}
-      ${sh["1"]||sh["2"]?`<span class="eyebrow" style="margin-top:8px">Showing on the page (Jul 2026 sheet)</span><div>1st ${esc(sh["1"]||"not recorded")} · 2nd ${esc(sh["2"]||"not recorded")}</div>`:""}
+      ${sh["1"]||sh["2"]?`<span class="eyebrow" style="margin-top:8px">On the page now <span class="muted" style="text-transform:none;letter-spacing:0">(${esc(shownLbl())})</span></span><div>1st ${esc(sh["1"]||"not recorded")} · 2nd ${esc(sh["2"]||"not recorded")}</div>`:""}
       ${fam?`<span class="eyebrow" style="margin-top:8px">Family</span><div>${esc(famNames(fam).join(" + "))}</div>`:""}
     </div></div>`;
 }
@@ -1079,6 +1079,7 @@ function teamMetaChip(a,g){const set=(S.setPrices||{})[a.name];if(set)return `<s
   return `<select class="gsel${manualTier(a)?" manual":""}" data-grp="${esc(a.name)}" aria-label="Group for ${esc(a.name)}"><option value="">Auto · ${esc(autoTier(a).name)}</option>${S.tiers.map(x=>`<option value="${esc(x.name)}" ${manualTier(a)&&manualTier(a).name===x.name?"selected":""}>${esc(x.name)} · set by hand</option>`).join("")}</select>`}
 // ---------- monthly views and clicks (admin) ----------
 // Stored per article as "offset.views.clicks" with offset 0 = the month tracking began (settings.monthly.base)
+function shownLbl(){if(!SHOWN_AT)return "Jul 2026 list";const d=new Date(SHOWN_AT+"T12:00:00");return "checked "+d.getDate()+" "+d.toLocaleString("en-GB",{month:"short"})}
 function parseMonthly(s){if(!s)return null;const m=[];String(s).split(" ").forEach(p=>{const [o,v,c]=p.split(".").map(Number);if(!isNaN(o))m[o]={v:v||0,c:c||0}});return m}
 const monBase=()=>{const b=((S.monthly||{}).base)||"2025-11";const [y,mm]=b.split("-").map(Number);return {y,m:mm-1}};
 const monDate=o=>{const b=monBase();return new Date(b.y,b.m+o,1)};
