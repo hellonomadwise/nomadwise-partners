@@ -369,3 +369,34 @@ b.pos{color:var(--accent)} b.neg{color:var(--coral)}
   label.ci>.pill{grid-column:2;justify-self:start;white-space:normal}
   .filters select{flex:1 1 45%}
 }
+.nosug .sugc{display:none}
+.tedit{background:var(--surface);color:var(--muted);cursor:pointer;font-family:inherit}
+.tedit:hover{border-color:var(--ink);color:var(--ink)}
+.tedit.manual{border-color:var(--internal);color:var(--internal);background:var(--internal-soft)}
+.stat-line{font-size:.74rem;color:var(--muted)}
+/* admin, calmer */
+.tag-internal{display:none}
+.howto>summary{cursor:pointer;font-size:.86rem;color:var(--muted);margin:2px 0 6px}
+.nmb{background:none;border:0;padding:0;font:inherit;font-weight:600;color:var(--ink);text-align:left;cursor:pointer;display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap}
+.nmb:hover{text-decoration:underline;text-underline-offset:3px}
+.nmb .tchip{font-weight:600;color:var(--muted)}
+.row.open{background:color-mix(in srgb,var(--bg) 60%,transparent)}
+.rdetail{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:10px 12px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-size:.86rem;margin:2px 0 6px}
+.rd-col{display:flex;flex-direction:column;gap:4px}
+@media (max-width:700px){.rdetail{grid-template-columns:1fr}}
+.seat.held{background:var(--surface);border-color:var(--line);color:var(--ink)}
+.seat.held .st{font-weight:600}
+.seat.held .who{color:var(--muted);font-weight:500}
+.seat.held.soon{border-color:color-mix(in srgb,var(--amber) 45%,var(--line))}
+.seat.held.soon .who{color:var(--amber)}
+.seat.plain .who{font-weight:500}
+.key.held{background:var(--surface);border:1px solid var(--line);color:var(--ink)}
+.glance{display:flex;align-items:baseline;gap:10px;padding:7px 0;border-top:1px solid var(--line)}
+.glance:first-of-type{border-top:0}
+.glance .gv{font-family:var(--f-display);font-weight:700;font-size:1.25rem;min-width:52px}
+.glance .gl{font-size:.9rem;display:flex;flex-direction:column}
+.glance .gl small{color:var(--muted);font-size:.76rem}
+.fold>summary{padding:11px 16px;font-size:.98rem}
+.best-note{background:var(--accent-soft);color:var(--ink);border-radius:10px;padding:10px 14px;margin:8px 0}
+.best-note ul{margin:6px 0 6px 18px;padding:0}
+.best-note li{margin:2px 0}
