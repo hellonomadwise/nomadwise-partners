@@ -428,3 +428,6 @@ button.glance:disabled{cursor:default;opacity:.7}
 .ichip{font:inherit;font-size:.8rem;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer}
 .ichip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
 .int-a{font:inherit;font-size:.86rem;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.acc-g td{background:var(--bg);font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:6px 10px}
+.int-arts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.int-arts .int-a{flex:1 1 220px;min-width:180px}

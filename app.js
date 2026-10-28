@@ -827,12 +827,17 @@ function teamPanels(){
     <tr><td><b>Review article</b></td><td class="muted">Dedicated add-on</td><td colspan="2">€ <input id="rv" data-s="review" type="number" min="0" value="${S.review}"></td></tr>
     <tr><td><b>Package discount</b></td><td class="muted">Premium and Standard only</td><td colspan="2"><input id="dm" data-s="discMin" type="number" min="1" value="${S.discMin}"> slots or more get <input id="dp" data-s="discPct" type="number" min="0" max="50" value="${S.discPct}"> % off</td></tr>
     </tbody></table></div></section>`;
-  const role=x=>x.provider?`Partner · ${esc(x.provider)}`:'<span class="tag-internal" style="margin:0">Admin</span>';
+  const role=x=>x.provider?`Partner · ${esc(x.provider)}`:'<span class="pill">Admin</span>';
   const acc=`<section class="panel internal"><div class="phead"><h2 class="dup">Who has access<span class="tag-internal">Admin only</span></h2></div>
     <p class="note">Everyone signs in at partners.nomadwise.io with their email, and only emails on this list get a sign-in link. Partners see their own page, greeted by name. Admins see this view. Removing someone signs them out straight away.</p>
     <div class="scroll"><table class="tbl"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last sign-in</th><th></th></tr></thead><tbody>
-    ${ACCESS.map(x=>`<tr><td><b>${esc(x.name||"")}</b></td><td>${esc(x.email)}</td><td>${role(x)}</td><td class="muted">${x.last_login?fmtD(new Date(x.last_login)):"Not yet"}</td>
-      <td><div class="linkcell"><button class="btn small" data-sendlink="${esc(x.email)}">Email sign-in link</button>${x.email===ME?"":`<button class="btn small ghost" data-rmacc="${esc(x.email)}">Remove</button>`}</div></td></tr>`).join("")}
+    ${(()=>{const row=x=>`<tr><td><b>${esc(x.name||"")}</b></td><td>${esc(x.email)}</td><td>${role(x)}</td><td class="muted">${x.last_login?fmtD(new Date(x.last_login)):"Not yet"}</td>
+      <td><div class="linkcell"><button class="btn small" data-sendlink="${esc(x.email)}">Email sign-in link</button>${x.email===ME?"":`<button class="btn small ghost" data-rmacc="${esc(x.email)}">Remove</button>`}</div></td></tr>`;
+      const sub=t=>`<tr class="acc-g"><td colspan="5">${t}</td></tr>`;
+      const team=ACCESS.filter(x=>!x.provider),parts=ACCESS.filter(x=>x.provider).sort((u,w)=>u.provider.localeCompare(w.provider)||String(u.name).localeCompare(String(w.name)));
+      const none=PROVIDERS.filter(p=>!ACCESS.some(x=>x.provider===p.name)).map(p=>p.name);
+      return sub("Nomadwise team")+team.map(row).join("")+sub("Partners")+(parts.map(row).join("")||'<tr><td colspan="5" class="muted">No partners yet.</td></tr>')
+        +(none.length?`<tr><td colspan="5" class="muted" style="font-size:.86rem">No one from ${esc(none.join(", "))} yet. Add their contact below so they can sign in.</td></tr>`:"")})()}
     </tbody></table></div>
     <form class="access-add" id="accform">
       <input id="na-name" placeholder="Name, e.g. Simon Martin" aria-label="Name" required>
@@ -842,11 +847,12 @@ function teamPanels(){
       <input id="na-co" placeholder="Company name, e.g. Airalo" aria-label="New partner company" hidden>
       <button class="btn small primary" type="submit">Give access</button></form>
     <p class="note">Giving access doesn't email anyone. Tell them to sign in at partners.nomadwise.io, or press Email sign-in link.</p></section>
-    <section class="panel internal"><div class="phead"><h2 class="dup">What they're looking for</h2></div>
+    <section class="panel internal"><div class="phead"><h2>What each partner is looking for</h2></div>
     <p class="note">Note what each partner told you on a call. Their page then shows "Picked for you" from these, best sellers first. Without it, they see our most read guides with a slot open. Each partner only ever sees their own.</p>
     <div class="ints">${PROVIDERS.map(p=>{const I=interestOf(p.name);return `<div class="int"><b>${esc(p.name)}</b>
       <div class="int-r">${REGION_ORDER.filter(r=>ARTS.some(a=>regionOf[a.name]===r)).map(r=>`<button class="ichip${I.regions.includes(r)?" on":""}" data-intr="${esc(p.name)}|${esc(r)}" aria-pressed="${I.regions.includes(r)}">${esc(r)}</button>`).join("")}</div>
-      <input class="int-a" data-inta="${esc(p.name)}" list="int-arts" placeholder="Specific articles, comma separated, e.g. Japan, Thailand" value="${esc(I.articles.join(", "))}" aria-label="Articles ${esc(p.name)} is interested in"></div>`}).join("")}</div>
+      <div class="int-arts">${I.articles.map(n=>`<span class="pchip">${esc(n)}<button class="x" data-intdel="${esc(p.name)}|${esc(n)}" aria-label="Remove ${esc(n)}">×</button></span>`).join("")}
+        <input class="int-a" data-inta="${esc(p.name)}" list="int-arts" placeholder="${I.articles.length?"Add another article":"Add a specific article, e.g. Japan"}" aria-label="Add an article ${esc(p.name)} is interested in"></div></div>`}).join("")}</div>
     <datalist id="int-arts">${ARTS.map(a=>`<option value="${esc(a.name)}">`).join("")}</datalist></section>`;
   const order=["Top page"].concat(S.tiers.map(t=>t.name));const cg={};const capT=[0,0,0],openT=[0,0,0],cnt={};
   ARTS.forEach(a=>{const n=grp(a).name;cg[n]=cg[n]||[0,0,0];cnt[n]=(cnt[n]||0)+1;a.slots.forEach(s=>{const p=priceOf(a,s.pos);cg[n][s.pos]+=p;capT[s.pos]+=p;if(status(a,s,null).k==="available")openT[s.pos]+=p})});
@@ -1313,9 +1319,14 @@ function bind(){
   const intSave=()=>saveSettings("Saved. Their page now picks from this.");
   document.querySelectorAll("[data-intr]").forEach(el=>el.addEventListener("click",()=>{const [p,r]=el.dataset.intr.split("|");S.interests=S.interests||{};const I=S.interests[p]=S.interests[p]||{regions:[],articles:[]};I.regions=I.regions||[];
     I.regions=I.regions.includes(r)?I.regions.filter(x=>x!==r):I.regions.concat([r]);openD.add("d-acc");intSave();render()}));
-  document.querySelectorAll("[data-inta]").forEach(el=>el.addEventListener("change",()=>{const p=el.dataset.inta;S.interests=S.interests||{};const I=S.interests[p]=S.interests[p]||{regions:[],articles:[]};
-    const names=el.value.split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);I.articles=ARTS.filter(a=>names.includes(a.name.toLowerCase())).map(a=>a.name);
-    const miss=names.filter(n=>!ARTS.some(a=>a.name.toLowerCase()===n));if(miss.length)toast("Not found: "+miss.join(", "));openD.add("d-acc");intSave();render()}));
+  const intI=p=>{S.interests=S.interests||{};const I=S.interests[p]=S.interests[p]||{regions:[],articles:[]};I.regions=I.regions||[];I.articles=I.articles||[];return I};
+  const intAdd=el=>{const v=el.value.trim();if(!v)return;const a=ARTS.find(x=>x.name.toLowerCase()===v.toLowerCase());
+    if(!a){toast("No article called "+v+". Pick one from the list");return}const I=intI(el.dataset.inta);if(!I.articles.includes(a.name))I.articles.push(a.name);
+    openD.add("d-acc");intSave();render();const n=document.querySelector(`[data-inta="${CSS.escape(el.dataset.inta)}"]`);if(n)n.focus()};
+  document.querySelectorAll("[data-inta]").forEach(el=>{
+    el.addEventListener("input",()=>{if(ARTS.some(x=>x.name.toLowerCase()===el.value.trim().toLowerCase()))intAdd(el)});
+    el.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();intAdd(el)}})});
+  document.querySelectorAll("[data-intdel]").forEach(el=>el.addEventListener("click",()=>{const [p,n]=el.dataset.intdel.split("|");const I=intI(p);I.articles=I.articles.filter(x=>x!==n);openD.add("d-acc");intSave();render()}));
   document.querySelectorAll("[data-gx]").forEach(el=>el.addEventListener("click",()=>{const n=el.dataset.gx;if(GEXP.has(n))GEXP.delete(n);else GEXP.add(n);render()}));
   document.querySelectorAll("[data-gedit]").forEach(el=>el.addEventListener("click",()=>{GEDIT=el.dataset.gedit;render();const s=document.querySelector(`[data-grp="${CSS.escape(GEDIT)}"]`);if(s)s.focus()}));
   document.querySelectorAll("[data-grp]").forEach(el=>el.addEventListener("change",()=>{const n=el.dataset.grp;S.groups=S.groups||{};
