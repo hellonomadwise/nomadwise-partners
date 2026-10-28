@@ -439,12 +439,12 @@ function pbInit(p){const c=S.contracts[p];if(!c)return null;
   const sc=SCEN[p]||{};
   const curList=cur.reduce((t,n)=>{const a=ARTS.find(x=>x.name===n);return t+(a?priceOf(a,1):0)},0);
   const disc=sc.disc!=null?+sc.disc:(curList?1-(+c.base||0)*12/curList:0);
-  return {p,cur,keep:new Set(sc.keep?sc.keep.filter(n=>cur.includes(n)):cur),add:new Set(sc.add||[]),disc,q:""};}
+  return {p,cur,keep:new Set(sc.keep?sc.keep.filter(n=>cur.includes(n)):cur),add:new Set(sc.add||[]),disc,q:"",opt:new Set(sc.opt||[]),optPrice:Object.assign({},c.prices||{},sc.optPrice||{})};}
 const ROI=()=>{const r=+((SCEN._renewal||{}).roi);return r>0?r:1.5};
 function roiSave(r){SCEN._renewal={roi:r};sb.rpc("partners_team_scenario",{p_session:SESSION,p_provider:"_renewal",p_data:{roi:r}}).then(({error})=>{if(error)toast("Couldn't save the target")})}
 function pbSetList(){return PB.cur.filter(n=>PB.keep.has(n)).concat([...PB.add]).reduce((t,n)=>{const a=ARTS.find(x=>x.name===n);return t+(a?priceOf(a,1):0)},0)}
 function pbSave(){if(!PB)return;clearTimeout(pbSave.t);pbSave.t=setTimeout(async()=>{
-  const data={keep:[...PB.keep],add:[...PB.add],disc:PB.disc,monthly:PB.monthly,at:new Date().toISOString()};SCEN[PB.p]=data;
+  const data={keep:[...PB.keep],add:[...PB.add],disc:PB.disc,monthly:PB.monthly,opt:[...PB.opt],optPrice:PB.optPrice,at:new Date().toISOString()};SCEN[PB.p]=data;
   const {error}=await sb.rpc("partners_team_scenario",{p_session:SESSION,p_provider:PB.p,p_data:data});if(error)toast("Couldn't save the scenario. Check your connection.")},600)}
 function pbPanel(){
   const cps=Object.keys(S.contracts||{});if(!cps.length)return '<p class="muted">No partner has a monthly contract.</p>';
@@ -463,6 +463,9 @@ function pbPanel(){
   const est=a=>PB.cur.includes(a.name)?brandSales(a,p):S1(a); // kept: their own sales; new: what 1st position sold there
   const row=a=>{const e=est(a),fee=lp(a)*share;return {a,e,fee,net:e.v-fee-e.c,we:fee+e.c}};
   const R=inSet.map(row);const tot=R.reduce((t,r)=>({v:t.v+r.e.v,c:t.c+r.e.c,n:t.n+r.e.n,net:t.net+r.net}),{v:0,c:0,n:0,net:0});
+  const optA=(c.options||[]).map(n=>ARTS.find(a=>a.name===n)).filter(Boolean);
+  const OX=optA.filter(a=>PB.opt.has(a.name)).reduce((t,a)=>{const e=S1(a),y=(+PB.optPrice[a.name]||0)*12;return {y:t.y+y,m:t.m+(+PB.optPrice[a.name]||0),v:t.v+e.v,c:t.c+e.c,n:t.n+e.n,k:t.k+1}},{y:0,m:0,v:0,c:0,n:0,k:0});
+  tot.v+=OX.v;tot.c+=OX.c;tot.n+=OX.n;tot.net+=OX.v-OX.y-OX.c;
   const curY=c.current?c.current.monthly*12:0,curList=curA.reduce((t,a)=>t+lp(a),0);
   const curEst=curA.reduce((t,a)=>{const b=brandSales(a,p);return {v:t.v+b.v,c:t.c+b.c}},{v:0,c:0});
   const dropped=curA.filter(a=>!PB.keep.has(a.name)),added=cand.filter(x=>PB.add.has(x.a.name));
@@ -480,13 +483,18 @@ function pbPanel(){
     </div>
     ${c.edit&&c.edit.on?`<p class="note" style="color:var(--accent)"><b>Shared with ${esc(p)}${c.edit.shared_at?" on "+fmtD(new Date(c.edit.shared_at)):""}.</b> Their page shows ${c.edit.keep.length+c.edit.add.length} articles at ${Math.round((c.edit.disc||0)*100)}% off list (€${c.base} a month). They can remove articles, add free ones and send it back; it lands in the offers inbox and by email.</p>`:""}
     <div class="kgrid">
-      ${stat("Articles",inSet.length,`${PB.keep.size} kept · ${dropped.length} dropped · ${added.length} added`)}
-      ${stat("Price",eur(Y)+" a year",`${eur(M)} a month · ${inSet.length?eur(Y/inSet.length):"€0"} per article${curY?" · "+(Y>=curY?"+":"")+pc(Y/curY-1)+"% on now":""}`)}
+      ${stat("Articles",inSet.length+OX.k,`${PB.keep.size} kept · ${dropped.length} dropped · ${added.length} added${OX.k?" · "+OX.k+" optional":""}`)}
+      ${stat("Price",eur(Y+OX.y)+" a year",`${eur(M+OX.m)} a month${OX.k?" ("+eur(M)+" core + "+eur(OX.m)+" optional)":""} · ${inSet.length?eur(Y/inSet.length):"€0"} per core article${curY?" · "+((Y+OX.y)>=curY?"+":"")+pc((Y+OX.y)/curY-1)+"% on now":""}`)}
       ${stat("List value",eur(listT),listT?`price is ${Y<listT?pc(1-Y/listT)+"% below":pc(Y/listT-1)+"% above"} list`:"")}
-      ${stat("Their sales, 12 months",eur(tot.v),`${tot.n} sales · ${Y?(tot.v/Y).toFixed(1)+"× the price":""}${curY?" · now "+eur(curEst.v):""}`)}
-      ${stat("We earn",eur(Y+tot.c),`price ${eur(Y)} + commission ${eur(tot.c)}${curY?" · now "+eur(curY+curEst.c):""}`)}
+      ${stat("Their sales, 12 months",eur(tot.v),`${tot.n} sales · ${Y?(tot.v/(Y+OX.y)).toFixed(1)+"× the price":""}${curY?" · now "+eur(curEst.v):""}`)}
+      ${stat("We earn",eur(Y+OX.y+tot.c),`price ${eur(Y+OX.y)} + commission ${eur(tot.c)}${curY?" · now "+eur(curY+curEst.c):""}`)}
       ${stat("Their net",(tot.net<0?"-":"+")+eur(Math.abs(tot.net)),"sales minus price and commission, before their data costs",tot.net<0?"neg":"pos")}
     </div>
+    ${optA.length?`<h3 style="margin:14px 0 6px">Optional extras <span class="muted" style="font-weight:500">· monthly add-ons on top of the core price; tick to include in this scenario</span></h3>
+    <div class="scroll"><table class="tbl"><thead><tr><th></th><th>Article</th><th class="num">Price a month</th><th class="num">A year</th><th class="num">1st pos. sales</th><th class="num">Our comm.</th><th class="num">Clicks</th><th class="num">Their net</th></tr></thead><tbody>
+    ${optA.map(a=>{const e=S1(a),m=+PB.optPrice[a.name]||0,on=PB.opt.has(a.name),net=e.v-m*12-e.c;return `<tr class="${on?"pb-on":""}"><td><input type="checkbox" data-pbo="${esc(a.name)}" ${on?"checked":""} aria-label="Include ${esc(a.name)}"></td><td>${esc(a.name)} 1st</td><td class="num"><span class="mono">€</span><input type="number" min="0" data-pbop="${esc(a.name)}" value="${m}" style="width:70px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font:inherit"></td><td class="num mono">${eur(m*12)}</td><td class="num mono">${e.v?eur(e.v):'<span class="muted">€0</span>'} <span class="muted" style="font-size:.74rem">${e.n}</span></td><td class="num mono muted">${eur(e.c)}</td><td class="num mono muted">${a.clicks||0}</td><td class="num mono">${eurS(net)}</td></tr>`}).join("")}
+    </tbody></table></div>
+    <p class="note">Prices here are what ${esc(p)} sees for each optional country when you share. 1st pos. sales is what the 1st position on that article sold in the last 12 months, whoever held it.</p>`:""}
     <div class="filters" style="margin:10px 0"><input type="search" id="pb-q" placeholder="Search an article" value="${esc(PB.q)}" aria-label="Search the builder"></div>
     <div class="pb-cols">
       <div><h3 style="margin:4px 0 6px">Their current articles <span class="muted" style="font-weight:500">· worst for them first</span></h3>
@@ -814,22 +822,24 @@ function bind(){
   const pbd=$("pb-d");if(pbd)pbd.addEventListener("change",()=>{PB.disc=Math.min(.9,Math.max(0,(+pbd.value||0)/100));pbSave();render()});
   const pbq=$("pb-q");if(pbq)pbq.addEventListener("input",()=>{PB.q=pbq.value;const pos=pbq.selectionStart;render();const n=$("pb-q");n.focus();n.setSelectionRange(pos,pos)});
   document.querySelectorAll("[data-pbk]").forEach(el=>el.addEventListener("change",()=>{const n=el.dataset.pbk;if(el.checked)PB.keep.add(n);else PB.keep.delete(n);pbSave();render()}));
+  document.querySelectorAll("[data-pbo]").forEach(el=>el.addEventListener("change",()=>{const n=el.dataset.pbo;if(el.checked)PB.opt.add(n);else PB.opt.delete(n);pbSave();render()}));
+  document.querySelectorAll("[data-pbop]").forEach(el=>el.addEventListener("change",()=>{PB.optPrice[el.dataset.pbop]=Math.max(0,+el.value||0);pbSave();render()}));
   document.querySelectorAll("[data-pba]").forEach(el=>el.addEventListener("change",()=>{const n=el.dataset.pba;if(el.checked)PB.add.add(n);else PB.add.delete(n);pbSave();render()}));
   const pbr=$("pb-reset");if(pbr)pbr.addEventListener("click",()=>{const p=PB.p;delete SCEN[p];PB=pbInit(p);pbSave();render()});
   const pbn=$("pb-dropneg");if(pbn)pbn.addEventListener("click",()=>{const p=PB.p,c=S.contracts[p];
     const share=1-PB.disc;let k=0;
     PB.cur.forEach(n=>{if(!PB.keep.has(n))return;const a=ARTS.find(x=>x.name===n);const e=brandSales(a,p);if(e.v-priceOf(a,1)*share-e.c<0){PB.keep.delete(n);k++}});
     pbSave();render();toast(k?"Dropped "+k+" current "+(k===1?"article":"articles")+" where their net was negative":"No current article has a negative net at this discount")});
-  const pbs=$("pb-share");if(pbs)pbs.addEventListener("click",async()=>{const p=PB.p;const edit={keep:[...PB.keep],add:[...PB.add],disc:PB.disc};const base=PB.monthly;
+  const pbs=$("pb-share");if(pbs)pbs.addEventListener("click",async()=>{const p=PB.p;const edit={keep:[...PB.keep],add:[...PB.add],disc:PB.disc,prices:Object.fromEntries((S.contracts[p].options||[]).map(o=>[o,+PB.optPrice[o]||0]))};const base=PB.monthly;
     if(!base){toast("Set a price first");return}
     const {error}=await sb.rpc("partners_team_share_proposal",{p_session:SESSION,p_provider:p,p_edit:edit,p_base:base});
     if(error){toast(error.message||"Couldn't share");return}
-    S.contracts[p].edit=Object.assign(edit,{on:true,shared_at:new Date().toISOString()});S.contracts[p].base=base;render();toast(p+" now sees this scenario at €"+base+" a month and can adjust it")});
+    S.contracts[p].prices=edit.prices;delete edit.prices;S.contracts[p].edit=Object.assign(edit,{on:true,shared_at:new Date().toISOString()});S.contracts[p].base=base;render();toast(p+" now sees this scenario at €"+base+" a month and can adjust it")});
   const pbu=$("pb-unshare");if(pbu)pbu.addEventListener("click",async()=>{const p=PB.p;const {error}=await sb.rpc("partners_team_share_proposal",{p_session:SESSION,p_provider:p,p_edit:null,p_base:null});
     if(error){toast(error.message||"Couldn't update");return}delete S.contracts[p].edit;render();toast(p+" sees the fixed proposal again")});
   const pbc=$("pb-copy");if(pbc)pbc.addEventListener("click",()=>{const p=PB.p;const el=document.querySelector("#d-pb .kgrid");
     const dropped=PB.cur.filter(n=>!PB.keep.has(n)),added=[...PB.add];
-    const txt=`${p} 2027 scenario\n${PB.keep.size+added.length} articles at €${PB.monthly} a month (€${PB.monthly*12} a year)\nKeeping ${PB.keep.size} of ${PB.cur.length}.\nDropping: ${dropped.join(", ")||"none"}\nAdding: ${added.join(", ")||"none"}\n\n${el?el.innerText.replace(/\n+/g,"\n"):""}`;
+    const txt=`${p} 2027 scenario\n${PB.keep.size+added.length} articles at €${PB.monthly} a month (€${PB.monthly*12} a year)\nKeeping ${PB.keep.size} of ${PB.cur.length}.\nDropping: ${dropped.join(", ")||"none"}\nAdding: ${added.join(", ")||"none"}\nOptional extras: ${[...PB.opt].map(n=>n+" €"+PB.optPrice[n]+"/mo").join(", ")||"none"}\n\n${el?el.innerText.replace(/\n+/g,"\n"):""}`;
     navigator.clipboard.writeText(txt).then(()=>toast("Summary copied"),()=>toast("Couldn't copy"))});
   document.querySelectorAll("[data-k]").forEach(el=>{
     el.addEventListener(el.type==="checkbox"?"change":"click",()=>{toggle(el.dataset.k);render()});
