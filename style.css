@@ -436,3 +436,10 @@ button.glance:disabled{cursor:default;opacity:.7}
 .kgrid>.kout{order:1}
 .kgrid>.kplan{order:2}
 .gsub{font-size:.76rem;color:var(--muted);font-weight:400}
+.trend{display:inline-block;font-size:.7rem;font-weight:600;padding:1px 7px;border-radius:999px;margin-left:6px;vertical-align:1px;white-space:nowrap}
+.trend.down{background:var(--coral-soft);color:var(--coral)}
+.trend.up{background:var(--accent-soft);color:var(--accent)}
+.trend.flat{background:var(--bg);color:var(--muted)}
+.trend.new{background:var(--internal-soft);color:var(--internal)}
+.mbar-wrap{display:flex;flex-direction:column;gap:4px;margin-top:6px;color:var(--muted)}
+.mbars{max-width:100%;height:auto}

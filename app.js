@@ -262,8 +262,8 @@ function exitPreview(){location.reload()}
 function applyTeamData(data){
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   SALES_FROM=data.salesFrom||null; PAYMENTS=data.payments||[]; SHOWN=data.shown||{}; SCEN=data.scenarios||{};
-  ARTS=(data.articles||[]).map(r=>({name:r.name,region:r.region,views:r.views,clicks:r.clicks,sales:r.sales||null,slots:[{pos:1,prov:r.p1_prov||"",exp:r.p1_exp||"",flag:r.p1_flag||""},{pos:2,prov:r.p2_prov||"",exp:r.p2_exp||"",flag:r.p2_flag||""}]}));
-  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=data.activity||[]; TEAM_EV=data.teamActivity||[];
+  ARTS=(data.articles||[]).map(r=>({name:r.name,region:r.region,views:r.views,clicks:r.clicks,sales:r.sales||null,mon:parseMonthly(r.monthly),slots:[{pos:1,prov:r.p1_prov||"",exp:r.p1_exp||"",flag:r.p1_flag||""},{pos:2,prov:r.p2_prov||"",exp:r.p2_exp||"",flag:r.p2_flag||""}]}));
+  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=data.activity||[]; TEAM_EV=data.teamActivity||[]; MON_TOT=null;
   offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailsOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
   setRegions();
 }
@@ -1053,8 +1053,8 @@ function glanceModal(){if(!GLANCE)return "";const k=GLANCE;
   }else{const pos=k==="open1"?1:2,pl=pos===1?"1st":"2nd";
     const L=ARTS.map(a=>({a,s:a.slots[pos-1],st:status(a,a.slots[pos-1],null)})).filter(x=>x.st.k==="available").map(x=>({...x,v:+((x.a.sales||{})["v"+pos])||0,n:+((x.a.sales||{})["s"+pos])||0,fr:frActive(x.a,x.s)}));
     L.sort((x,y)=>y.v-x.v||y.a.clicks-x.a.clicks);
-    title=L.length+" "+pl+" positions open";intro=`Free to book now, best sellers first. "Sales" is what the ${pl} position there sold in 12 months, whoever was showing. "% of clicks bought" is those sales divided by all clicks to eSIM providers on the page. ${eur(L.reduce((t,x)=>t+priceOf(x.a,pos),0))} a year at list if all were sold.`;
-    body=`<ul>${L.slice(0,25).map(x=>`<li class="gr"><div class="gr-a"><b>${esc(x.a.name)}</b> <span class="tchip">${esc(grp(x.a).name)}</span>${x.fr?` <span class="pill fr">${esc(x.fr)} first refusal</span>`:""}</div><div class="gr-m"><span>${x.v?"sales <b>"+eur(x.v)+"</b> <span class=\"gsub\">"+x.n+" "+(x.n===1?"sale":"sales")+"</span>":'<span class="muted">no sales tracked</span>'} <span class="muted">· ${x.a.clicks.toLocaleString("en-GB")} clicks${x.n&&x.a.clicks?` · <span title="Sales in this position divided by clicks to any eSIM provider on the page">${(x.n/x.a.clicks*100).toFixed(x.n/x.a.clicks<0.1?1:0)}% of clicks bought</span>`:""}</span></span><span class="mono">${eur(priceOf(x.a,pos))}</span></div></li>`).join("")}</ul>${L.length>25?`<p class="muted" style="font-size:.86rem">And ${L.length-25} more with fewer sales. Use Show all in All placements to see them.</p>`:""}`;
+    title=L.length+" "+pl+" positions open";intro=`Free to book now, best sellers first. "Sales" is what the ${pl} position there sold in 12 months, whoever was showing, with the number of sales in brackets. "Converted" is sales ÷ clicks: ${(()=>{const x=L.find(y=>y.n&&y.a.clicks);return x?`${esc(x.a.name)}'s ${x.n} sales from ${x.a.clicks} clicks is ${(x.n/x.a.clicks*100).toFixed(x.n/x.a.clicks<0.1?1:0)}%`:"sales divided by clicks"})()}. ${eur(L.reduce((t,x)=>t+priceOf(x.a,pos),0))} a year at list if all were sold.`;
+    body=`<ul>${L.slice(0,25).map(x=>`<li class="gr"><div class="gr-a"><b>${esc(x.a.name)}</b> <span class="tchip">${esc(grp(x.a).name)}</span>${trendChip(x.a)}${x.fr?` <span class="pill fr">${esc(x.fr)} first refusal</span>`:""}</div><div class="gr-m"><span>${x.v?"sales <b>"+eur(x.v)+"</b> <span class=\"gsub\">("+x.n+")</span>":'<span class="muted">no sales tracked</span>'} <span class="muted">· ${x.a.clicks.toLocaleString("en-GB")} clicks${x.n&&x.a.clicks?` · <span title="${x.n} sales ÷ ${x.a.clicks} clicks">${(x.n/x.a.clicks*100).toFixed(x.n/x.a.clicks<0.1?1:0)}% converted</span>`:""}</span></span><span class="mono">${eur(priceOf(x.a,pos))}</span></div></li>`).join("")}</ul>${L.length>25?`<p class="muted" style="font-size:.86rem">And ${L.length-25} more with fewer sales. Use Show all in All placements to see them.</p>`:""}`;
     foot="Partners see these as Available on their page.";}
   return `<div class="modal" data-gclose="1" role="dialog" aria-modal="true" aria-labelledby="gl-t"><div class="modal-in gmodal">
     <div class="gm-h"><h2 id="gl-t">${title}</h2><button class="x" data-gclose="1" aria-label="Close">×</button></div>
@@ -1069,18 +1069,50 @@ function rowDetail(a,t,g){
   return `<div class="rdetail">
     <div class="rd-col"><span class="eyebrow">Sales, last 12 months</span>${line("1st",sl.s1,sl.v1,sl.c1,sl.b1)}${line("2nd",sl.s2,sl.v2,sl.c2,sl.b2)}${line("3rd",sl.s3,sl.v3,sl.c3,sl.b3)}${line("Not placed",sl.so,sl.vo,sl.co,sl.bo)}${!(sl.s1||sl.s2||sl.s3||sl.so)?'<div class="muted">No sales tracked</div>':""}</div>
     <div class="rd-col"><span class="eyebrow">Group</span><div>${teamMetaChip(a,g)}</div>
-      <span class="eyebrow" style="margin-top:8px">Traffic</span><div>${a.views.toLocaleString("en-GB")} views · ${a.clicks.toLocaleString("en-GB")} clicks${a.views>=50?" · "+Math.round(a.clicks/a.views*100)+"% click rate":""}</div>
+      <span class="eyebrow" style="margin-top:8px">Traffic, 12 months</span><div>${a.views.toLocaleString("en-GB")} views · ${a.clicks.toLocaleString("en-GB")} clicks${a.views>=50?" · "+Math.round(a.clicks/a.views*100)+"% click rate":""} ${trendChip(a)}</div>
+      ${a.mon?`<div class="mbar-wrap">${monBars(a)}<span class="muted" style="font-size:.74rem">Grey: views. Green: clicks to providers. Hover a month for numbers. The last bar is this month so far.</span></div>`:""}
       ${sh["1"]||sh["2"]?`<span class="eyebrow" style="margin-top:8px">Showing on the page (Jul 2026 sheet)</span><div>1st ${esc(sh["1"]||"not recorded")} · 2nd ${esc(sh["2"]||"not recorded")}</div>`:""}
       ${fam?`<span class="eyebrow" style="margin-top:8px">Family</span><div>${esc(famNames(fam).join(" + "))}</div>`:""}
     </div></div>`;
 }
 function teamMetaChip(a,g){const set=(S.setPrices||{})[a.name];if(set)return `<span class="tchip Premium">${esc(g)}</span> <span class="muted">custom price</span>`;
   return `<select class="gsel${manualTier(a)?" manual":""}" data-grp="${esc(a.name)}" aria-label="Group for ${esc(a.name)}"><option value="">Auto · ${esc(autoTier(a).name)}</option>${S.tiers.map(x=>`<option value="${esc(x.name)}" ${manualTier(a)&&manualTier(a).name===x.name?"selected":""}>${esc(x.name)} · set by hand</option>`).join("")}</select>`}
+// ---------- monthly views and clicks (admin) ----------
+// Stored per article as "offset.views.clicks" with offset 0 = the month tracking began (settings.monthly.base)
+function parseMonthly(s){if(!s)return null;const m=[];String(s).split(" ").forEach(p=>{const [o,v,c]=p.split(".").map(Number);if(!isNaN(o))m[o]={v:v||0,c:c||0}});return m}
+const monBase=()=>{const b=((S.monthly||{}).base)||"2025-11";const [y,mm]=b.split("-").map(Number);return {y,m:mm-1}};
+const monDate=o=>{const b=monBase();return new Date(b.y,b.m+o,1)};
+const monCount=()=>{const b=monBase();return (TODAY.getFullYear()-b.y)*12+TODAY.getMonth()-b.m+1}; // includes the current, partial month
+let MON_TOT=null;
+function monTotals(){if(MON_TOT)return MON_TOT;const n=monCount(),t=Array.from({length:n},()=>({v:0,c:0}));
+  ARTS.forEach(a=>(a.mon||[]).forEach((x,i)=>{if(x&&t[i]){t[i].v+=x.v;t[i].c+=x.c}}));return MON_TOT=t}
+// Trend on clicks to providers, as a share of all eSIM guide clicks, so summer and autumn don't fool it:
+// the last 3 complete months against the complete months before them (since the article went live)
+function monTrend(a){const m=a.mon;if(!m)return null;const n=monCount()-1,T=monTotals();
+  const first=m.findIndex(x=>x&&x.v>0);if(first<0)return null;
+  const rec=[n-3,n-2,n-1],ear=[];for(let i=first;i<n-3;i++)ear.push(i);
+  const live=first>0?monDate(first):null;
+  if(ear.length<3)return {k:"new",live};
+  const sum=(ix,f)=>ix.reduce((t,i)=>t+((f(i))||0),0);
+  const rc=sum(rec,i=>m[i]&&m[i].c),ec=sum(ear,i=>m[i]&&m[i].c);if(rc+ec<25)return {k:"few",live};
+  const rs=rc/Math.max(1,sum(rec,i=>T[i].c)),es=ec/Math.max(1,sum(ear,i=>T[i].c)),r=es?rs/es:0;
+  return {k:r>=1.5?"up":r<=0.67?"down":"flat",r,live}}
+function trendChip(a){const t=monTrend(a);if(!t)return "";
+  if(t.k==="new")return `<span class="trend new" title="Not enough history for a trend yet">live since ${fmtM(t.live)}</span>`;
+  if(t.k==="few")return t.live?`<span class="trend new">live since ${fmtM(t.live)}</span>`:"";
+  const lab={up:"↑ clicks rising",down:"↓ clicks falling",flat:"steady"}[t.k];
+  return `<span class="trend ${t.k}" title="Its share of all clicks to eSIM providers, last 3 full months against the months before (${t.r>=1?"+":""}${Math.round((t.r-1)*100)}%). Using share takes out the seasons.">${lab}</span>`}
+function monBars(a){const m=a.mon;if(!m)return "";const n=monCount(),w=18,gap=4,h=46;
+  const vs=Array.from({length:n},(_,i)=>(m[i]||{}).v||0),cs=Array.from({length:n},(_,i)=>(m[i]||{}).c||0),mv=Math.max(1,...vs);
+  const bars=vs.map((v,i)=>{const x=i*(w+gap),bh=Math.round(v/mv*h),ch=Math.round(cs[i]/mv*h),part=i===n-1;
+    return `<g opacity="${part?0.45:1}"><title>${fmtM(monDate(i))}${part?" (so far)":""}: ${v} views, ${cs[i]} clicks${v?" ("+Math.round(cs[i]/v*100)+"%)":""}</title><rect x="${x}" y="${h-bh}" width="${w}" height="${bh}" rx="2" fill="var(--line)"/><rect x="${x+4}" y="${h-ch}" width="${w-8}" height="${ch}" rx="1" fill="var(--accent)"/></g>`}).join("");
+  const W=n*(w+gap)-gap;
+  return `<svg class="mbars" viewBox="0 0 ${W} ${h+14}" width="${W}" height="${h+14}" role="img" aria-label="Views and clicks by month">${bars}<text x="0" y="${h+12}" font-size="9" fill="currentColor" opacity=".6">${MON[monDate(0).getMonth()]}</text><text x="${W}" y="${h+12}" font-size="9" fill="currentColor" opacity=".6" text-anchor="end">${MON[monDate(n-1).getMonth()]}</text></svg>`}
 function teamMeta(a,t,g){
   const sl=a.sales||{},sb=(l,n,v)=>n?`${l} ${n} (${eur(v)})`:"";
   const sales=[sb("1st",sl.s1,sl.v1),sb("2nd",sl.s2,sl.v2)].filter(Boolean).join(" · ");
   const tip=(sl.b1||[]).concat(sl.b2||[]).map(x=>x.b+": "+x.n+" sales, "+eur(x.v)).join("\n");
-  return `<span class="mono stat-line" title="${esc(tip)}">${a.views.toLocaleString("en-GB")} views · ${a.clicks.toLocaleString("en-GB")} clicks${a.views>=50?" ("+Math.round(a.clicks/a.views*100)+"%)":""}${sales?" · sales "+sales:""}</span>`;
+  return `<span class="mono stat-line" title="${esc(tip)}">${a.views.toLocaleString("en-GB")} views · ${a.clicks.toLocaleString("en-GB")} clicks${a.views>=50?" ("+Math.round(a.clicks/a.views*100)+"%)":""}${sales?" · sales "+sales:""}</span>${trendChip(a)}`;
 }
 // Admin seats: who has it and until when, nothing else
 function teamSeat(a,s,st){
