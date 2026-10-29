@@ -263,7 +263,7 @@ function applyTeamData(data){
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   SALES_FROM=data.salesFrom||null; PAYMENTS=data.payments||[]; SHOWN=data.shown||{};SHOWN_AT=data.shownAt||null; SCEN=data.scenarios||{};
   ARTS=(data.articles||[]).map(r=>({name:r.name,region:r.region,views:r.views,clicks:r.clicks,sales:r.sales||null,mon:parseMonthly(r.monthly),slots:[{pos:1,prov:r.p1_prov||"",exp:r.p1_exp||"",flag:r.p1_flag||""},{pos:2,prov:r.p2_prov||"",exp:r.p2_exp||"",flag:r.p2_flag||""}]}));
-  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=data.activity||[]; TEAM_EV=data.teamActivity||[]; MON_TOT=null; INBOUND=data.inbound||[];
+  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=data.activity||[]; TEAM_EV=data.teamActivity||[]; MON_TOT=null; INBOUND=data.inbound||[]; RES=data.results||null;
   offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailsOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
   setRegions();
 }
@@ -419,7 +419,7 @@ function render(){
     $("pv-open").addEventListener("click",()=>startPreview($("as-prov").value));
   }
   const who="<b>"+esc(v)+"</b>";
-  $("forwho").innerHTML=v===null?"<b>Admin view</b> · visible only to Nomadwise":(v==="__new"?"Prepared for <b>a new partner</b>":"Prepared for "+who);
+  $("forwho").innerHTML=v===null?`<b>Admin view</b> · visible only to Nomadwise <span class="seg tview" role="group" aria-label="Admin section"><button data-tview="place" aria-pressed="${TVIEW!=="results"}">Placements</button><button data-tview="results" aria-pressed="${TVIEW==="results"}">Partner results</button></span>`:(v==="__new"?"Prepared for <b>a new partner</b>":"Prepared for "+who);
   if(ROLE==="provider"){document.querySelector("header.top h1").textContent=MYNAME?"Welcome, "+firstOf(MYNAME):"Partner placements"}
   const totalViews=TOTALS?+TOTALS.views:ARTS.reduce((t,a)=>t+a.views,0);
   const totalClicks=TOTALS?+TOTALS.clicks:ARTS.reduce((t,a)=>t+a.clicks,0);
@@ -429,6 +429,7 @@ function render(){
     <div class="stat"><span class="v">${totalClicks.toLocaleString("en-GB")}</span><span class="l">clicks to providers</span></div>
     ${v===null?`<div class="stat"><span class="v">${totalViews?(totalClicks/totalViews*100).toFixed(1):"0"}%</span><span class="l">blended click rate</span></div>`:""}`;
   OPEN_NOW=av;
+  if(v===null&&TVIEW==="results"){$("grid").style.gridTemplateColumns="minmax(0,1fr)";$("main").innerHTML=resultsPanel();$("rail").innerHTML="";bind();mbar();return}
   $("main").innerHTML=(v===null?teamPanels():"")+(v!==null&&v!=="__new"?currentPanel(v):"")+inventoryPanel(v)+(v===null?"":addonPanel())+bidBox()+(v===null?glanceModal():"");
   $("rail").innerHTML=railPanel(v);
   bind();
@@ -1024,6 +1025,39 @@ let GEDIT=null, OPEN_NOW=[0,0,0]; const GEXP=new Set();
 let GLANCE=null;
 // ---------- inbound partner requests (admin, right-hand column) ----------
 let INBOUND=[], IB=null, IBR={}, IBD={};
+// ---------- partner results (admin only, eSIM) ----------
+let RES=null, RP="12", ROPEN=new Set(), TVIEW=(()=>{try{return localStorage.getItem("nw_tview")||"place"}catch(e){return "place"}})();
+const RPER=[["12","Last 12 months"],["3","Last 3 months"],["prev","Last month"],["this","This month"]];
+function resMonths(){const now=new Date(),y=now.getFullYear(),m=now.getMonth();const k=(yy,mm)=>{const d=new Date(yy,mm,1);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")};
+  if(RP==="this")return [k(y,m)];if(RP==="prev")return [k(y,m-1)];const n=RP==="3"?3:12;return Array.from({length:n},(_,i)=>k(y,m-n+1+i))}
+function resRows(months){const set=new Set(months),by={};const g=p=>by[p]=by[p]||{p,clicks:0,sales:0,sale:0,com:0,plc:0,mon:{}};
+  const gm=(r,m)=>r.mon[m]=r.mon[m]||{clicks:0,sales:0,sale:0,com:0,plc:0};
+  ((RES&&RES.sales)||[]).forEach(([p,m,n,sa,c,pl])=>{if(!set.has(m))return;const r=g(p),x=gm(r,m);r.sales+=+n;r.sale+=+sa;r.com+=+c;r.plc+=+pl;x.sales+=+n;x.sale+=+sa;x.com+=+c;x.plc+=+pl});
+  ((RES&&RES.clicks)||[]).forEach(([p,m,n])=>{if(!set.has(m))return;const r=g(p),x=gm(r,m);r.clicks+=+n;x.clicks+=+n});
+  return Object.values(by).filter(r=>r.sales||r.plc||r.com||r.clicks>=20).sort((a,b)=>(b.com+b.plc)-(a.com+a.plc))}
+const pctS=(a,b)=>b?(a/b*100).toFixed(a/b<0.1?1:0)+"%":"–";
+function resCells(r){const tot=r.com+r.plc,res=r.sale-r.com-r.plc;
+  return `<td class="num">${r.clicks?r.clicks.toLocaleString("en-GB"):"–"}</td><td class="num">${r.sales||"–"}</td><td class="num">${r.sale?eur(r.sale):"–"}</td>
+    <td class="num">${r.com?eur(r.com):"–"}</td><td class="num">${r.plc?eur(r.plc):"–"}</td><td class="num"><b>${eur(tot)}</b></td>
+    <td class="num ${res<0&&(r.sale||r.plc)?"neg":""}">${r.sale||r.plc?(res<0?"−":"")+eur(Math.abs(res)):"–"}</td>
+    <td class="num">${r.sales&&r.sale?eur(r.sale/r.sales):"–"}</td><td class="num">${r.clicks&&r.sales?pctS(r.sales,r.clicks):"–"}</td><td class="num">${r.clicks?"€"+(tot/r.clicks).toFixed(2):"–"}</td>`}
+function resultsPanel(){
+  if(!RES||!(RES.sales||[]).length)return `<section class="panel"><h2>Partner results</h2><p class="muted">No results loaded yet.</p></section>`;
+  const months=resMonths(),rows=resRows(months);const T=rows.reduce((t,r)=>{["clicks","sales","sale","com","plc"].forEach(k=>t[k]+=r[k]);return t},{p:"Total",clicks:0,sales:0,sale:0,com:0,plc:0});
+  const mlab=m=>{const [y,mm]=m.split("-");return new Date(+y,+mm-1,1).toLocaleString("en-GB",{month:"short",year:"2-digit"})};
+  const meta=RES.meta||{};const upd=meta.sales_loaded?new Date(meta.sales_loaded).toLocaleDateString("en-GB",{day:"numeric",month:"short"}):"";
+  const tile=(v,l,sub)=>`<div class="rt"><span class="rv">${v}</span><span class="rl">${l}${sub?`<small>${sub}</small>`:""}</span></div>`;
+  const head=`<tr><th>Partner</th><th class="num">Clicks</th><th class="num">Sales</th><th class="num">Sale amount</th><th class="num">Our commission</th><th class="num">Placements &amp; fees</th><th class="num">Our total</th><th class="num" title="Sale amount less our commission and what they paid us for placements">Partner result</th><th class="num" title="Average order value">Avg order</th><th class="num" title="Sales divided by clicks">Converted</th><th class="num" title="Our total divided by clicks">Per click</th></tr>`;
+  const body=rows.map(r=>{const open=ROPEN.has(r.p);const ms=months.filter(m=>r.mon[m]);
+    return `<tr class="rrow${open?" open":""}" data-rp="${esc(r.p)}" tabindex="0"><td><span class="rcar" aria-hidden="true">${open?"▾":"▸"}</span> ${esc(r.p)}</td>${resCells(r)}</tr>`+
+      (open?ms.map(m=>`<tr class="rmon"><td>${mlab(m)}</td>${resCells(Object.assign({p:m},r.mon[m]))}</tr>`).join(""):"")}).join("");
+  return `<section class="panel results"><div class="phead"><h2>Partner results <span class="muted" style="font-size:.9rem;font-weight:500">eSIM</span></h2>
+      <div class="seg" role="group" aria-label="Period">${RPER.map(([k,l])=>`<button data-rper="${k}" aria-pressed="${RP===k}">${l}</button>`).join("")}</div></div>
+    <div class="rtiles">${tile(eur(T.sale),"Sales we sent partners",T.sales.toLocaleString("en-GB")+" sales")}${tile(eur(T.com),"Our commission")}${tile(eur(T.plc),"Placements & fees")}${tile(eur(T.com+T.plc),"Our total",T.clicks?"€"+((T.com+T.plc)/T.clicks).toFixed(2)+" per click":"")}${tile(T.clicks.toLocaleString("en-GB"),"Clicks to partners",T.clicks?pctS(T.sales,T.clicks)+" converted":"")}</div>
+    <div class="rscroll"><table class="tbl rtbl"><thead>${head}</thead><tbody>${body}</tbody><tfoot><tr><td><b>Total</b></td>${resCells(T)}</tr></tfoot></table></div>
+    <p class="note">${mlab(months[0])}${months.length>1?" to "+mlab(months[months.length-1]):""}${months.includes(months[months.length-1])&&RP!=="prev"?" (this month so far)":""}. Click a partner for month by month.
+      Sales and commission come from the sales feed (Impact, Saily, Travelpayouts), placements and fees from KPI Stats (placements, the Ubigi retainer, review fees)${upd?", updated "+upd:""}. Pending sales count, reversed ones don't.
+      Clicks are real readers clicking through to the partner, with bots and our own browser removed, tracked since 4 Nov 2025. Partner result is their sale amount less our commission and placements, before their own costs.</p></section>`}
 const IB_ROUTES=[["invite","Invite to portal"],["review","Review first"],["decline","Decline"]];
 const IB_DEF={green:"invite",amber:"review",red:"decline"};
 const IB_LBL={green:"Looks strong",amber:"Review first",red:"Not a fit"};
@@ -1389,6 +1423,9 @@ function bind(){
     if(k==="offers"){const s=document.querySelector(".queue .qi");(s||document.querySelector("#main .panel")).scrollIntoView({behavior:"smooth",block:"start"});return}
     if(k==="visits"){openD.add("d-act");render();setTimeout(()=>{const d=$("d-act");if(d)d.scrollIntoView({behavior:"smooth",block:"start"})},30);return}
     GLANCE=k;render()}));
+  document.querySelectorAll("[data-tview]").forEach(el=>el.addEventListener("click",()=>{TVIEW=el.dataset.tview;try{localStorage.setItem("nw_tview",TVIEW)}catch(e){};render()}));
+  document.querySelectorAll("[data-rper]").forEach(el=>el.addEventListener("click",()=>{RP=el.dataset.rper;render()}));
+  document.querySelectorAll("[data-rp]").forEach(el=>{const t=()=>{const p=el.dataset.rp;ROPEN.has(p)?ROPEN.delete(p):ROPEN.add(p);render()};el.addEventListener("click",t);el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();t()}})});
   document.querySelectorAll("[data-ib]").forEach(el=>el.addEventListener("click",()=>{IB=el.dataset.ib;render()}));
   document.querySelectorAll("[data-ibdone]").forEach(el=>el.addEventListener("click",()=>{IB="__done";render()}));
   document.querySelectorAll("[data-ibclose]").forEach(el=>el.addEventListener("click",e=>{if(e.target!==el)return;IB=null;render()}));

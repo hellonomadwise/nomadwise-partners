@@ -467,3 +467,24 @@ button.glance:disabled{cursor:default;opacity:.7}
 .ib-seg{align-self:flex-start;flex-wrap:wrap}
 .ibm .acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .ibm textarea{width:100%;font:inherit;font-size:.9rem}
+
+/* partner results (admin) */
+.tview{margin-left:10px;vertical-align:middle;font-size:.82rem}
+.tview button{padding:3px 10px}
+.results .phead{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.rtiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.rt{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.rv{font-family:var(--f-display);font-weight:700;font-size:1.3rem}
+.rl{font-size:.82rem;color:var(--muted);display:flex;flex-direction:column}
+.rl small{font-size:.74rem}
+.rscroll{overflow-x:auto}
+.rtbl th.num,.rtbl td.num{text-align:right;font-family:var(--f-mono);white-space:nowrap}
+.rtbl th{white-space:nowrap}
+.rtbl td.neg{color:var(--coral)}
+.rrow{cursor:pointer}
+.rrow:hover td{background:var(--bg)}
+.rrow.open td{font-weight:600}
+.rcar{color:var(--muted);display:inline-block;width:12px}
+.rmon td{font-size:.8rem;color:var(--muted);background:var(--bg)}
+.rmon td:first-child{padding-left:26px}
+.rtbl tfoot td{border-top:2px solid var(--line);font-weight:600}
