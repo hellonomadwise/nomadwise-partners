@@ -1040,24 +1040,24 @@ function resCells(r){const tot=r.com+r.plc,res=r.sale-r.com-r.plc;
   return `<td class="num">${r.clicks?r.clicks.toLocaleString("en-GB"):"–"}</td><td class="num">${r.sales||"–"}</td><td class="num">${r.sale?eur(r.sale):"–"}</td>
     <td class="num">${r.com?eur(r.com):"–"}</td><td class="num">${r.plc?eur(r.plc):"–"}</td><td class="num"><b>${eur(tot)}</b></td>
     <td class="num ${res<0&&(r.sale||r.plc)?"neg":""}">${r.sale||r.plc?(res<0?"−":"")+eur(Math.abs(res)):"–"}</td>
-    <td class="num">${r.sales&&r.sale?eur(r.sale/r.sales):"–"}</td><td class="num">${r.clicks&&r.sales?pctS(r.sales,r.clicks):"–"}</td><td class="num">${r.clicks?"€"+(tot/r.clicks).toFixed(2):"–"}</td>`}
+    <td class="num">${r.sales&&r.sale?eur(r.sale/r.sales):"–"}</td><td class="num">${r.clicks&&r.sales?pctS(r.sales,r.clicks):"–"}</td><td class="num">${r.clicks?"€"+(r.com/r.clicks).toFixed(2):"–"}</td>`}
 function resultsPanel(){
   if(!RES||!(RES.sales||[]).length)return `<section class="panel"><h2>Partner results</h2><p class="muted">No results loaded yet.</p></section>`;
   const months=resMonths(),rows=resRows(months);const T=rows.reduce((t,r)=>{["clicks","sales","sale","com","plc"].forEach(k=>t[k]+=r[k]);return t},{p:"Total",clicks:0,sales:0,sale:0,com:0,plc:0});
   const mlab=m=>{const [y,mm]=m.split("-");return new Date(+y,+mm-1,1).toLocaleString("en-GB",{month:"short",year:"2-digit"})};
   const meta=RES.meta||{};const upd=meta.sales_loaded?new Date(meta.sales_loaded).toLocaleDateString("en-GB",{day:"numeric",month:"short"}):"";
   const tile=(v,l,sub)=>`<div class="rt"><span class="rv">${v}</span><span class="rl">${l}${sub?`<small>${sub}</small>`:""}</span></div>`;
-  const head=`<tr><th>Partner</th><th class="num">Clicks</th><th class="num">Sales</th><th class="num">Sale amount</th><th class="num">Our commission</th><th class="num">Placements &amp; fees</th><th class="num">Our total</th><th class="num" title="Sale amount less our commission and what they paid us for placements">Partner result</th><th class="num" title="Average order value">Avg order</th><th class="num" title="Sales divided by clicks">Converted</th><th class="num" title="Our total divided by clicks">Per click</th></tr>`;
+  const head=`<tr><th>Partner</th><th class="num">Clicks</th><th class="num">Sales</th><th class="num">Sale amount</th><th class="num">Our commission</th><th class="num">Placements &amp; fees</th><th class="num">Our total</th><th class="num" title="Sale amount less our commission and what they paid us for placements">Partner result</th><th class="num" title="Average order value">Avg order</th><th class="num" title="Sales divided by clicks">Converted</th><th class="num" title="Our commission divided by clicks (placements and fees not included)">Per click</th></tr>`;
   const body=rows.map(r=>{const open=ROPEN.has(r.p);const ms=months.filter(m=>r.mon[m]);
     return `<tr class="rrow${open?" open":""}" data-rp="${esc(r.p)}" tabindex="0"><td><span class="rcar" aria-hidden="true">${open?"▾":"▸"}</span> ${esc(r.p)}</td>${resCells(r)}</tr>`+
       (open?ms.map(m=>`<tr class="rmon"><td>${mlab(m)}</td>${resCells(Object.assign({p:m},r.mon[m]))}</tr>`).join(""):"")}).join("");
   return `<section class="panel results"><div class="phead"><h2>Partner results <span class="muted" style="font-size:.9rem;font-weight:500">eSIM</span></h2>
       <div class="seg" role="group" aria-label="Period">${RPER.map(([k,l])=>`<button data-rper="${k}" aria-pressed="${RP===k}">${l}</button>`).join("")}</div></div>
-    <div class="rtiles">${tile(eur(T.sale),"Sales we sent partners",T.sales.toLocaleString("en-GB")+" sales")}${tile(eur(T.com),"Our commission")}${tile(eur(T.plc),"Placements & fees")}${tile(eur(T.com+T.plc),"Our total",T.clicks?"€"+((T.com+T.plc)/T.clicks).toFixed(2)+" per click":"")}${tile(T.clicks.toLocaleString("en-GB"),"Clicks to partners",T.clicks?pctS(T.sales,T.clicks)+" converted":"")}</div>
+    <div class="rtiles">${tile(eur(T.sale),"Sales we sent partners",T.sales.toLocaleString("en-GB")+" sales")}${tile(eur(T.com),"Our commission")}${tile(eur(T.plc),"Placements & fees")}${tile(eur(T.com+T.plc),"Our total",T.clicks?"€"+(T.com/T.clicks).toFixed(2)+" commission per click":"")}${tile(T.clicks.toLocaleString("en-GB"),"Clicks to partners",T.clicks?pctS(T.sales,T.clicks)+" converted":"")}</div>
     <div class="rscroll"><table class="tbl rtbl"><thead>${head}</thead><tbody>${body}</tbody><tfoot><tr><td><b>Total</b></td>${resCells(T)}</tr></tfoot></table></div>
     <p class="note">${mlab(months[0])}${months.length>1?" to "+mlab(months[months.length-1]):""}${months.includes(months[months.length-1])&&RP!=="prev"?" (this month so far)":""}. Click a partner for month by month.
       Sales and commission come from the sales feed (Impact, Saily, Travelpayouts), placements and fees from KPI Stats (placements, the Ubigi retainer, review fees)${upd?", updated "+upd:""}. Pending sales count, reversed ones don't.
-      Clicks are real readers clicking through to the partner, with bots and our own browser removed, tracked since 4 Nov 2025. Partner result is their sale amount less our commission and placements, before their own costs.</p></section>`}
+      Clicks are real readers clicking through to the partner, with bots and our own browser removed, tracked since 4 Nov 2025. Partner result is their sale amount less our commission and placements, before their own costs. Per click is our commission divided by clicks, without placements and fees.</p></section>`}
 const IB_ROUTES=[["invite","Invite to portal"],["review","Review first"],["decline","Decline"]];
 const IB_DEF={green:"invite",amber:"review",red:"decline"};
 const IB_LBL={green:"Looks strong",amber:"Review first",red:"Not a fit"};
