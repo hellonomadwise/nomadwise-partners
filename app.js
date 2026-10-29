@@ -412,7 +412,7 @@ function render(){
   if(ROLE==="team"){
     $("topbar").innerHTML=`<span>Signed in as ${esc(MYNAME||ME)}${MYNAME?` · ${esc(ME)}`:""}</span><button id="out">Sign out</button>`;
     $("out").addEventListener("click",signOut);
-    const opts=PROVIDERS.map(p=>{const c=ACCESS.find(x=>x.provider===p.name);return [p.name,esc(p.name)+(c&&c.name?" · "+esc(c.name):" · no contact yet")]}).concat([["__new","A new partner (no placements)"]]);
+    const opts=liveCos().map(p=>{const c=ACCESS.find(x=>x.provider===p.name);return [p.name,esc(p.name)+(c&&c.name?" · "+esc(c.name):" · no contact yet")]}).concat([["__new","A new partner (no placements)"]]);
     $("switch").innerHTML=`<div class="switch" role="group" aria-label="Preview a partner's page"><span class="eyebrow">See exactly what a partner sees</span>
       <select id="as-prov" aria-label="Partner to preview">${opts.map(([v,l])=>`<option value="${esc(v)}">${l}</option>`).join("")}</select>
       <button class="btn small" id="pv-open">Open their page</button></div>`;
