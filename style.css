@@ -205,6 +205,7 @@ label.fl input,label.fl textarea{background:var(--bg);border:1px solid var(--lin
 .done{background:var(--accent-soft);color:var(--accent);border-radius:10px;padding:12px;font-size:.9rem}
 
 .mbar{display:none}
+.mbar[hidden]{display:none!important}
 @media (max-width:900px){
   .rail{position:static}
   .mbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--ink);color:var(--bg);justify-content:space-between;align-items:center;gap:12px;
@@ -443,3 +444,26 @@ button.glance:disabled{cursor:default;opacity:.7}
 .trend.new{background:var(--internal-soft);color:var(--internal)}
 .mbar-wrap{display:flex;flex-direction:column;gap:4px;margin-top:6px;color:var(--muted)}
 .mbars{max-width:100%;height:auto}
+
+/* partner requests (admin rail) */
+.ib{margin-top:14px}
+.ib .phead h3{margin:0}
+.ib-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line);padding:8px 0;cursor:pointer;color:inherit;font:inherit}
+.ib-row:first-of-type{border-top:0}
+.ib-row:hover b{text-decoration:underline}
+.ib-t{display:flex;flex-direction:column;font-size:.9rem;line-height:1.3}
+.ib-t small{color:var(--muted);font-size:.76rem}
+.ib-row .gx{margin-left:auto;color:var(--muted);font-size:1.2rem}
+.ib-dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--taken)}
+.ib-dot.green{background:var(--accent)}.ib-dot.amber{background:var(--amber)}.ib-dot.red{background:var(--coral)}
+.ib-done{margin-top:6px;font-size:.82rem}
+.ibm{max-width:640px}
+.ib-scroll{overflow:auto;max-height:calc(86vh - 70px);display:flex;flex-direction:column;gap:10px;padding-right:4px}
+.ib-facts summary{cursor:pointer;font-size:.88rem;font-weight:600}
+.ib-facts ul{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:6px}
+.ib-facts li{display:flex;justify-content:space-between;gap:12px;font-size:.86rem;border-top:1px solid var(--line);padding-top:6px}
+.ib-facts li span:first-child{color:var(--muted)}
+.ib-facts li span:last-child{text-align:right}
+.ib-seg{align-self:flex-start;flex-wrap:wrap}
+.ibm .acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ibm textarea{width:100%;font:inherit;font-size:.9rem}

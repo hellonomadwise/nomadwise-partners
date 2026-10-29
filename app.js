@@ -263,7 +263,7 @@ function applyTeamData(data){
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   SALES_FROM=data.salesFrom||null; PAYMENTS=data.payments||[]; SHOWN=data.shown||{};SHOWN_AT=data.shownAt||null; SCEN=data.scenarios||{};
   ARTS=(data.articles||[]).map(r=>({name:r.name,region:r.region,views:r.views,clicks:r.clicks,sales:r.sales||null,mon:parseMonthly(r.monthly),slots:[{pos:1,prov:r.p1_prov||"",exp:r.p1_exp||"",flag:r.p1_flag||""},{pos:2,prov:r.p2_prov||"",exp:r.p2_exp||"",flag:r.p2_flag||""}]}));
-  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=data.activity||[]; TEAM_EV=data.teamActivity||[]; MON_TOT=null;
+  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=data.activity||[]; TEAM_EV=data.teamActivity||[]; MON_TOT=null; INBOUND=data.inbound||[];
   offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailsOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
   setRegions();
 }
@@ -1022,6 +1022,40 @@ function teamTracking(){if(teamTracking.on)return;teamTracking.on=true;
 let GEDIT=null, OPEN_NOW=[0,0,0]; const GEXP=new Set();
 // ---------- At a glance: tap a number to see what's behind it ----------
 let GLANCE=null;
+// ---------- inbound partner requests (admin, right-hand column) ----------
+let INBOUND=[], IB=null, IBR={}, IBD={};
+const IB_ROUTES=[["invite","Invite to portal"],["review","Review first"],["decline","Decline"]];
+const IB_DEF={green:"invite",amber:"review",red:"decline"};
+const IB_LBL={green:"Looks strong",amber:"Review first",red:"Not a fit"};
+const ibAgo=t=>{const d=Math.floor((Date.now()-new Date(t))/864e5);return d<=0?"today":d===1?"yesterday":d+" days ago"};
+function inboundPanel(){
+  const nw=INBOUND.filter(i=>i.status==="new"),done=INBOUND.filter(i=>i.status!=="new");
+  return `<section class="panel ib"><div class="phead"><h3>Partner requests</h3>${nw.length?`<span class="muted">${nw.length} new</span>`:""}</div>
+    ${nw.length?nw.slice(0,8).map(i=>`<button class="ib-row" data-ib="${i.id}"><span class="ib-dot ${i.verdict}" aria-hidden="true"></span><span class="ib-t"><b>${esc(i.company)}</b><small>${IB_LBL[i.verdict]} · ${ibAgo(i.at)}</small></span><span class="gx" aria-hidden="true">›</span></button>`).join(""):`<p class="note">No new requests. Forward any partner email to hellonomadwise@gmail.com and it appears here, checked, within a few hours.</p>`}
+    ${done.length?`<button class="lnk ib-done" data-ibdone="1">${done.length} handled in the last 30 days</button>`:""}</section>`}
+function inboundModal(){
+  if(IB==="__done"){const done=INBOUND.filter(i=>i.status!=="new");
+    return `<div class="modal" data-ibclose="1" role="dialog" aria-modal="true" aria-labelledby="ib-t"><div class="modal-in gmodal ibm"><div class="gm-h"><h2 id="ib-t">Handled partner requests</h2><button class="x" data-ibclose="1" aria-label="Close">×</button></div>
+      <div class="ib-scroll">${done.map(i=>`<button class="ib-row" data-ib="${i.id}"><span class="ib-dot ${i.verdict}"></span><span class="ib-t"><b>${esc(i.company)}</b><small>${i.status==="dismissed"?"Dismissed":(IB_ROUTES.find(r=>r[0]===i.route)||["","Replied"])[1]}${i.by?" by "+esc(i.by.split("@")[0]):""}${i.on?" · "+ibAgo(i.on):""}</small></span><span class="gx">›</span></button>`).join("")}</div></div></div>`}
+  const i=INBOUND.find(x=>x.id===IB);if(!i)return "";
+  const route=IBR[i.id]||IB_DEF[i.verdict];const dr=(IBD[i.id]&&IBD[i.id][route])||((i.drafts||{})[route])||{subject:"",body:""};
+  const flagCls=f=>f==="good"?"ok":f==="bad"?"due":f==="warn"?"soon":"";
+  return `<div class="modal" data-ibclose="1" role="dialog" aria-modal="true" aria-labelledby="ib-t"><div class="modal-in gmodal ibm">
+    <div class="gm-h"><h2 id="ib-t">${esc(i.company)} <span class="pill ${i.verdict==="green"?"ok":i.verdict==="amber"?"soon":"due"}">${IB_LBL[i.verdict]}</span></h2><button class="x" data-ibclose="1" aria-label="Close">×</button></div>
+    <div class="ib-scroll">
+    <p class="muted" style="font-size:.86rem">${esc(i.name||"")}${i.email?` · ${esc(i.email)}`:""}${i.site?` · <a href="${esc(/^https?:/.test(i.site)?i.site:"https://"+i.site)}" target="_blank" rel="noopener">${esc(i.site.replace(/^https?:\/\//,""))}</a>`:""} · ${ibAgo(i.at)}</p>
+    ${i.ask?`<p style="font-size:.9rem"><b>They asked:</b> ${esc(i.ask)}</p>`:""}
+    ${i.reason?`<p style="font-size:.9rem"><b>Why:</b> ${esc(i.reason)}</p>`:""}
+    ${(i.facts||[]).length?`<details class="ib-facts"><summary>What we checked (${i.facts.length})</summary><ul>${i.facts.map(f=>`<li><span>${esc(f.label)}</span><span class="${f.flag?"pill "+flagCls(f.flag):""}">${esc(f.value)}</span></li>`).join("")}</ul></details>`:""}
+    ${i.status==="new"?`<div class="seg ib-seg" role="group" aria-label="Reply">${IB_ROUTES.map(([k,l])=>`<button data-ibroute="${k}" aria-pressed="${k===route}">${l}</button>`).join("")}</div>
+    <label class="fl">Subject<input id="ib-subj" value="${esc(dr.subject||"")}"></label>
+    <label class="fl">Reply<textarea id="ib-body" rows="11">${esc(dr.body||"")}</textarea></label>
+    <div class="acts">${route==="invite"?`<button class="btn" id="ib-access">Give portal access</button>`:""}<button class="btn primary" id="ib-send">Open in email</button><button class="btn" id="ib-mark">Mark as replied</button><button class="lnk" id="ib-dismiss">Not a partner request</button></div>
+    ${route==="invite"?`<p class="note">Give portal access first, so their sign-in works when they read the email.</p>`:""}`
+    :`<p class="note">${i.status==="dismissed"?"Dismissed":"Replied ("+((IB_ROUTES.find(r=>r[0]===i.route)||["","reply"])[1]).toLowerCase()+")"}${i.by?" by "+esc(i.by):""}${i.on?", "+ibAgo(i.on):""}. <button class="lnk" id="ib-reopen">Move back to new</button></p>`}
+    </div></div></div>`}
+async function ibSet(id,status,route){const {error}=await sb.rpc("partners_team_inbound",{p_session:SESSION,p_id:id,p_status:status,p_route:route||null});
+  if(error){toast("Couldn't save: "+error.message);return false}const i=INBOUND.find(x=>x.id===id);if(i){i.status=status;i.route=route||null;i.on=status==="new"?null:new Date().toISOString();i.by=status==="new"?null:"you"}return true}
 function glanceSlots(kind){const out=[];
   ARTS.forEach(a=>a.slots.forEach(s=>{if(!s.prov||!s.exp||s.flag==="E")return;const e=D(s.exp),d=days(e,TODAY);
     if(kind==="renewal"&&d<0&&d>=-60)out.push({a,s,e,d,by:(()=>{const x=new Date(e);x.setDate(x.getDate()+60);return x})()});
@@ -1173,7 +1207,7 @@ function railPanel(v){
     return `<section class="panel"><h3 style="margin-bottom:8px">At a glance</h3>
       ${g(openO,openO===1?"offer waiting":"offers waiting","","offers")}${g(ren,"slots in renewal","ended, held up to 60 days","renewal")}${g(soon,"slots ending","in the next 60 days","ending")}
       ${g(OPEN_NOW[1],"1st positions open","free to book now","open1")}${g(OPEN_NOW[2],"2nd positions open","free to book now","open2")}${g(wk,wk===1?"partner visit":"partner visits","this week","visits")}
-      <p class="note" style="margin-top:8px">To see exactly what a partner sees, pick them at the top and press Open their page.</p></section>`}
+      <p class="note" style="margin-top:8px">To see exactly what a partner sees, pick them at the top and press Open their page.</p></section>${inboundPanel()}${inboundModal()}`}
   const T=totals();
   if(submitted) return `<section class="panel" id="selp"><h2>Your request</h2><div class="done"><b>Sent to Nomadwise${submitted.when?" on "+fmtD(new Date(submitted.when)):""}.</b><br>${submitted.items.length} ${submitted.items.length===1?"item":"items"}, package price ${eur(submitted.offer)}. We'll reply within 2 working days. You can send another once we've answered this one.</div>
     ${PREVIEW?`<p class="note">Preview only. Nothing was sent.</p><button class="btn small" id="reset">Reset preview</button>`:""}</section>`;
@@ -1355,6 +1389,21 @@ function bind(){
     if(k==="offers"){const s=document.querySelector(".queue .qi");(s||document.querySelector("#main .panel")).scrollIntoView({behavior:"smooth",block:"start"});return}
     if(k==="visits"){openD.add("d-act");render();setTimeout(()=>{const d=$("d-act");if(d)d.scrollIntoView({behavior:"smooth",block:"start"})},30);return}
     GLANCE=k;render()}));
+  document.querySelectorAll("[data-ib]").forEach(el=>el.addEventListener("click",()=>{IB=el.dataset.ib;render()}));
+  document.querySelectorAll("[data-ibdone]").forEach(el=>el.addEventListener("click",()=>{IB="__done";render()}));
+  document.querySelectorAll("[data-ibclose]").forEach(el=>el.addEventListener("click",e=>{if(e.target!==el)return;IB=null;render()}));
+  const ibKeep=()=>{if(!IB||IB==="__done")return;const i=INBOUND.find(x=>x.id===IB);if(!i||!$("ib-subj"))return;const r=IBR[i.id]||IB_DEF[i.verdict];(IBD[i.id]=IBD[i.id]||{})[r]={subject:$("ib-subj").value,body:$("ib-body").value}};
+  document.querySelectorAll("[data-ibroute]").forEach(el=>el.addEventListener("click",()=>{ibKeep();IBR[IB]=el.dataset.ibroute;render()}));
+  if($("ib-send"))$("ib-send").addEventListener("click",async()=>{ibKeep();const i=INBOUND.find(x=>x.id===IB);const r=IBR[i.id]||IB_DEF[i.verdict];
+    openMail(i.email,$("ib-subj").value,$("ib-body").value);if(await ibSet(i.id,"replied",r)){toast("Marked as replied");IB=null;setTimeout(render,400)}});
+  if($("ib-mark"))$("ib-mark").addEventListener("click",async()=>{ibKeep();const i=INBOUND.find(x=>x.id===IB);if(await ibSet(i.id,"replied",IBR[i.id]||IB_DEF[i.verdict])){toast("Marked as replied");IB=null;render()}});
+  if($("ib-dismiss"))$("ib-dismiss").addEventListener("click",async()=>{const i=INBOUND.find(x=>x.id===IB);if(await ibSet(i.id,"dismissed",null)){IB=null;render()}});
+  if($("ib-reopen"))$("ib-reopen").addEventListener("click",async()=>{const i=INBOUND.find(x=>x.id===IB);if(await ibSet(i.id,"new",null))render()});
+  if($("ib-access"))$("ib-access").addEventListener("click",async()=>{ibKeep();const i=INBOUND.find(x=>x.id===IB);
+    if(!i.email){toast("No email on this request");return}
+    const {error}=await sb.rpc("partners_team_access",{p_session:SESSION,p_name:i.name||i.company,p_email:i.email,p_provider:i.company,p_action:"add"});
+    if(error){toast(error.message);return}toast("Access given to "+i.email+". They can sign in at partners.nomadwise.io.");reloadTeam()});
+  if(IB&&!bind._ibesc){bind._ibesc=true;document.addEventListener("keydown",e=>{if(e.key==="Escape"&&IB){IB=null;render()}})}
   document.querySelectorAll("[data-gclose]").forEach(el=>el.addEventListener("click",e=>{if(e.target!==el)return;GLANCE=null;render()}));
   document.querySelectorAll("[data-gren]").forEach(el=>el.addEventListener("click",()=>{const id="rn-"+slug(el.dataset.gren);GLANCE=null;openD.add(id);render();setTimeout(()=>{const d=$(id);if(d)d.scrollIntoView({behavior:"smooth",block:"start"})},30)}));
   if(GLANCE&&!bind._esc){bind._esc=true;document.addEventListener("keydown",e=>{if(e.key==="Escape"&&GLANCE){GLANCE=null;render()}})}
