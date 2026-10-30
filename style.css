@@ -493,3 +493,24 @@ button.glance:disabled{cursor:default;opacity:.7}
 .ib-regs b{display:block;font-size:.88rem;margin-bottom:6px}
 .ib-regs .int-r{display:flex;flex-wrap:wrap;gap:6px}
 .ib-regs .note{margin-top:6px}
+/* Review add-on card in the right column */
+.rv-card{position:relative;margin-top:16px;padding:20px 18px 18px;border:1px solid var(--accent);background:linear-gradient(160deg,var(--accent-soft) 0%,var(--surface) 70%);overflow:hidden}
+.rv-card::after{content:"★";position:absolute;right:-6px;top:-14px;font-size:84px;line-height:1;color:var(--accent);opacity:.08;pointer-events:none}
+.rv-tag{display:inline-block;width:max-content;align-self:flex-start;justify-self:start;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);background:var(--surface);border:1px solid var(--accent);border-radius:999px;padding:2px 9px}
+.rv-card h3{margin:10px 0 6px;font-size:1.12rem}
+.rv-lead{font-size:.9rem;color:var(--muted);margin:0 0 10px}
+.rv-pts{list-style:none;margin:0 0 14px;padding:0;display:grid;gap:5px;font-size:.88rem}
+.rv-pts li{padding-left:22px;position:relative}
+.rv-pts li::before{content:"✓";position:absolute;left:0;top:0;width:16px;height:16px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:.66rem;font-weight:700;display:grid;place-items:center;margin-top:2px}
+.rv-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:12px;border-top:1px solid var(--line)}
+.rv-price{display:flex;flex-direction:column;line-height:1.15}
+.rv-price b{font-size:1.25rem}
+.rv-price small{color:var(--muted);font-size:.76rem}
+.rv-ok{margin:10px 0 0;font-size:.85rem;font-weight:600;color:var(--accent)}
+.rv-card.on{box-shadow:0 0 0 2px var(--accent-soft)}
+/* Review card, calmer: plain panel, no wash or watermark */
+.rv-card{background:var(--surface);border:1px solid var(--line)}
+.rv-card::after{content:none}
+.rv-card h3{margin:0 0 6px}
+.rv-pts li::before{background:none;color:var(--accent);font-size:.85rem;width:auto;height:auto;display:inline;margin:0}
+.rv-card.on{box-shadow:none;border-color:var(--accent)}

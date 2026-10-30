@@ -430,7 +430,7 @@ function render(){
     ${v===null?`<div class="stat"><span class="v">${totalViews?(totalClicks/totalViews*100).toFixed(1):"0"}%</span><span class="l">blended click rate</span></div>`:""}`;
   OPEN_NOW=av;
   if(v===null&&TVIEW==="results"){$("grid").style.gridTemplateColumns="minmax(0,1fr)";$("main").innerHTML=resultsPanel();$("rail").innerHTML="";bind();mbar();return}
-  $("main").innerHTML=(v===null?teamPanels():"")+(v!==null&&v!=="__new"?currentPanel(v):"")+inventoryPanel(v)+(v===null?"":addonPanel())+bidBox()+(v===null?glanceModal():"");
+  $("main").innerHTML=(v===null?teamPanels():"")+(v!==null&&v!=="__new"?currentPanel(v):"")+inventoryPanel(v)+bidBox()+(v===null?glanceModal():"");
   $("rail").innerHTML=railPanel(v);
   bind();
   mbar();
@@ -1235,9 +1235,15 @@ function seat(a,s,v,team){
 }
 
 function addonPanel(){
-  return `<section class="panel"><div class="phead"><h2>Add-ons</h2></div>
-    <div class="addon"><div><h3>Dedicated review article</h3><p class="muted" style="font-size:.88rem">A full Nomadwise review of your eSIM, written and published by us, with your link throughout.</p><p class="mono" style="margin-top:4px">${eur(S.review)} each</p></div>
-    <div class="qty"><button id="rv-m" aria-label="One fewer review">−</button><span class="mono" id="rv-n">${reviews}</span><button id="rv-p" aria-label="One more review">+</button></div></div></section>`;
+  const on=reviews>0;
+  return `<section class="panel rv-card${on?" on":""}" aria-labelledby="rv-h">
+    <h3 id="rv-h">Dedicated review article</h3>
+    <p class="rv-lead">We only recommend eSIMs we've tried ourselves. A full Nomadwise review, written and published by us, is the best way to introduce your eSIM to our readers.</p>
+    <ul class="rv-pts"><li>Tried and written up by our team</li><li>Published on Nomadwise as its own article</li><li>Your link throughout</li></ul>
+    <div class="rv-foot"><span class="rv-price"><b class="mono">${eur(S.review)}</b><small>per review</small></span>
+      ${on?`<div class="qty"><button id="rv-m" aria-label="One fewer review">−</button><span class="mono" id="rv-n">${reviews}</span><button id="rv-p" aria-label="One more review">+</button></div>`
+        :`<button class="btn primary small" id="rv-add">+ Add review</button>`}</div>
+    ${on?`<p class="rv-ok">✓ Added to your selection</p>`:""}</section>`;
 }
 
 function totals(){
@@ -1280,7 +1286,7 @@ function railPanel(v){
       <label class="fl">Note for the Nomadwise team (optional)<textarea id="o-note" rows="2" maxlength="3000">${esc(draftNote)}</textarea></label>
       <button class="btn primary" type="submit" ${(T.slots||reviews)&&!sending?"":"disabled"}>${sending?"Sending…":"Send to Nomadwise"}</button>
       <p class="note">Prices are fixed, with the package discount applied automatically. One open request at a time; we reply within 2 working days.</p>
-    </form>`}</section>`;
+    </form>`}</section>${confirmOffer?"":addonPanel()}`;
 }
 
 function mbar(){
@@ -1386,7 +1392,8 @@ function bind(){
   const fr=$("f-reg");if(fr)fr.addEventListener("change",()=>{filt.region=fr.value;if(fr.value)track("filter_region",{region:fr.value});render()});
   const fal=$("f-all");if(fal)fal.addEventListener("click",()=>{filt.all=fal.dataset.all==="1";if(filt.all)track("show_all",{});render()});
   const fa=$("f-avail");if(fa)fa.addEventListener("change",()=>{filt.avail=fa.checked;if(fa.checked)track("filter_available",{});render()});
-  const rm=$("rv-m"),rp=$("rv-p");
+  const rm=$("rv-m"),rp=$("rv-p"),rva=$("rv-add");
+  if(rva)rva.addEventListener("click",()=>{if(!submitted&&viewer()!==null){reviews=1;confirmOffer=null;track("review_change",{count:reviews});render()}});
   if(rm)rm.addEventListener("click",()=>{if(!submitted&&reviews>0){reviews--;confirmOffer=null;track("review_change",{count:reviews});render()}});
   if(rp)rp.addEventListener("click",()=>{if(!submitted&&viewer()!==null){reviews++;confirmOffer=null;track("review_change",{count:reviews});render()}});
   document.querySelectorAll("details.qi,details.fold,#d-done,details[id^='vis-']").forEach(d=>d.addEventListener("toggle",()=>{if(d.open)openD.add(d.id);else openD.delete(d.id)}));
