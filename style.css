@@ -488,3 +488,8 @@ button.glance:disabled{cursor:default;opacity:.7}
 .rmon td{font-size:.8rem;color:var(--muted);background:var(--bg)}
 .rmon td:first-child{padding-left:26px}
 .rtbl tfoot td{border-top:2px solid var(--line);font-weight:600}
+.regnote{margin:4px 0 10px;padding:8px 12px;border-radius:10px;background:var(--accent-soft);color:var(--ink,inherit);font-size:.9rem}
+.ib-regs{margin:6px 0 10px}
+.ib-regs b{display:block;font-size:.88rem;margin-bottom:6px}
+.ib-regs .int-r{display:flex;flex-wrap:wrap;gap:6px}
+.ib-regs .note{margin-top:6px}

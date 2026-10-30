@@ -231,7 +231,7 @@ function showPartner(data){
   ROLE="provider"; ME=data.provider; mode="prov"; asProv=ME;
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   ARTS=(data.articles||[]).map(a=>({name:a.name,region:a.region,grp:a.grp,p1:+a.p1,p2:+a.p2,slots:a.slots.map(s=>({pos:s.pos,prov:s.prov||"",exp:s.exp||"",flag:s.flag||""}))}));
-  TOTALS=data.totals; setRegions(); visStart=Date.now();
+  TOTALS=data.totals; setRegions(); visStart=Date.now(); MYREGIONS=(data.regions&&data.regions.length)?data.regions:null;
   BIDS=data.bids||[]; NOBID=new Set(data.noBid||[]); POPULAR=data.popular||[];
   const lo=data.lastOffer;
   if(lo&&lo.kind==="proposal"&&(lo.status==="new"||lo.status==="accepted")){
@@ -263,7 +263,7 @@ function applyTeamData(data){
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   SALES_FROM=data.salesFrom||null; PAYMENTS=data.payments||[]; SHOWN=data.shown||{};SHOWN_AT=data.shownAt||null; SCEN=data.scenarios||{};
   ARTS=(data.articles||[]).map(r=>({name:r.name,region:r.region,views:r.views,clicks:r.clicks,sales:r.sales||null,mon:parseMonthly(r.monthly),slots:[{pos:1,prov:r.p1_prov||"",exp:r.p1_exp||"",flag:r.p1_flag||""},{pos:2,prov:r.p2_prov||"",exp:r.p2_exp||"",flag:r.p2_flag||""}]}));
-  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=data.activity||[]; TEAM_EV=data.teamActivity||[]; MON_TOT=null; INBOUND=data.inbound||[]; RES=data.results||null;
+  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=data.activity||[]; TEAM_EV=data.teamActivity||[]; MON_TOT=null; INBOUND=data.inbound||[]; RES=data.results||null; MYREGIONS=null;
   offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailsOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
   setRegions();
 }
@@ -837,7 +837,7 @@ function teamPanels(){
     <tr><td><b>Review article</b></td><td class="muted">Dedicated add-on</td><td colspan="2">€ <input id="rv" data-s="review" type="number" min="0" value="${S.review}"></td></tr>
     <tr><td><b>Package discount</b></td><td class="muted">Premium and Standard only</td><td colspan="2"><input id="dm" data-s="discMin" type="number" min="1" value="${S.discMin}"> slots or more get <input id="dp" data-s="discPct" type="number" min="0" max="50" value="${S.discPct}"> % off</td></tr>
     </tbody></table></div></section>`;
-  const role=x=>x.provider?`Partner · ${esc(x.provider)}`:'<span class="pill">Admin</span>';
+  const role=x=>x.provider?`Partner · ${esc(x.provider)}${regOf(x.provider)?` <span class="muted">· ${esc(regList(regOf(x.provider)))} only</span>`:""}`:'<span class="pill">Admin</span>';
   const acc=`<section class="panel internal"><div class="phead"><h2 class="dup">Who has access<span class="tag-internal">Admin only</span></h2></div>
     <p class="note">Everyone signs in at partners.nomadwise.io with their email, and only emails on this list get a sign-in link. Partners see their own page, greeted by name. Admins see this view. Removing someone signs them out straight away.</p>
     <div class="scroll"><table class="tbl"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last sign-in</th><th></th></tr></thead><tbody>
@@ -849,6 +849,9 @@ function teamPanels(){
       return sub("Nomadwise team")+team.map(row).join("")+sub("Partners")+(parts.map(row).join("")||'<tr><td colspan="5" class="muted">No partners yet.</td></tr>')
         +(none.length?`<tr><td colspan="5" class="muted" style="font-size:.86rem">No one from ${esc(none.join(", "))} yet. Add their contact below so they can sign in.</td></tr>`:"")})()}
     </tbody></table></div>
+    ${(()=>{const cos=[...new Set(ACCESS.filter(x=>x.provider).map(x=>x.provider))].sort();if(!cos.length)return "";
+      return `<h3 style="margin:14px 0 4px">Which guides each partner can see</h3><p class="note">All regions unless you pick some. Pick one or more to show that partner only those guides (plus any slots they already hold). Changes apply the next time their page loads.</p>
+      <div class="ints">${cos.map(c=>`<div class="int"><b>${esc(c)}</b>${regChips("data-preg",c,regOf(c))}</div>`).join("")}</div>`})()}
     <form class="access-add" id="accform">
       <input id="na-name" placeholder="Name, e.g. Simon Martin" aria-label="Name" required>
       <input id="na-email" type="email" placeholder="name@company.com" aria-label="Email" required>
@@ -993,6 +996,7 @@ function inventoryPanel(v){
   return `<section class="panel"><div class="phead"><h2>${team?"All placements":"Available placements"}</h2><span class="muted">12-month term · prices per year</span></div>
     ${team?`<details class="howto"><summary>How these figures work</summary><p class="note">Views and clicks to eSIM providers over the last 12 months, measured on nomadwise.io. Click rate is clicks per page view. Sales are the last 12 months${SALES_FROM?" (from "+fmtD(new Date(SALES_FROM+"T00:00:00"))+")":""} from the sales feed: the number of sales and, in brackets, what customers paid the brand. Each brand counts towards the position it held: the current holder, or a brand that held 1st or 2nd earlier in the year (from the July positioning sheet and the May and August swaps). 3rd is the brand mentioned further down. “Not placed” is a brand we have no record of in 1st or 2nd on that article. Hover a figure to see the brands and our commission. Admin only: providers see the tier, not these figures. Tap an article name for sales by brand and to change its group.</p></details>`:""}
     <div class="legend" aria-label="Key">${(team?[["available","Open"],["held","Held"],["reserved","In renewal or reserved"]]:filt.all?[["available","Available"],["selected","Selected"],["mine","Yours"],["bid","Offers open"],["reserved","Reserved or in renewal"],["taken","Unavailable"]]:[["available","Available"],["selected","Selected"],["mine","Yours"],["bid","Offers open"]]).map(([c,l])=>`<span class="key ${c}">${l}</span>`).join("")}</div>
+    ${!team&&MYREGIONS?`<p class="regnote">You're seeing our ${esc(regList(MYREGIONS))} guides. If you'd like to see other regions too, just ask us.</p>`:""}
     <div class="filters"><input type="search" id="f-q" placeholder="Search a country or city" value="${esc(filt.q)}" aria-label="Search articles">
       ${regionSelect(v,team)}
       <select id="f-tier" aria-label="Group"><option value="">All groups</option>${["Top page"].concat(S.tiers.map(t=>t.name)).map(n=>`<option ${filt.tier===n?"selected":""}>${esc(n)}</option>`).join("")}</select>
@@ -1024,7 +1028,7 @@ let GEDIT=null, OPEN_NOW=[0,0,0]; const GEXP=new Set();
 // ---------- At a glance: tap a number to see what's behind it ----------
 let GLANCE=null;
 // ---------- inbound partner requests (admin, right-hand column) ----------
-let INBOUND=[], IB=null, IBR={}, IBD={};
+let INBOUND=[], IB=null, IBR={}, IBD={}; let MYREGIONS=null;
 // ---------- partner results (admin only, eSIM) ----------
 let RES=null, RP="12", ROPEN=new Set(), TVIEW=(()=>{try{return localStorage.getItem("nw_tview")||"place"}catch(e){return "place"}})();
 const RPER=[["12","Last 12 months"],["3","Last 3 months"],["prev","Last month"],["this","This month"]];
@@ -1061,6 +1065,12 @@ function resultsPanel(){
 const IB_ROUTES=[["invite","Invite to portal"],["review","Review first"],["decline","Decline"]];
 const IB_DEF={green:"invite",amber:"review",red:"decline"};
 const IB_LBL={green:"Looks strong",amber:"Review first",red:"Not a fit"};
+const regList=r=>r.length<=1?(r[0]||""):r.slice(0,-1).join(", ")+" and "+r[r.length-1];
+const allRegs=()=>REGION_ORDER.filter(r=>ARTS.some(a=>regionOf[a.name]===r));
+const regOf=name=>{const p=PROVIDERS.find(x=>x.name===name);return (p&&p.regions&&p.regions.length)?p.regions:null};
+// region chips: "All regions" plus one chip per region; data attribute carries "<key>|<region>" ("" = all)
+const regChips=(attr,key,cur)=>`<div class="int-r"><button class="ichip${cur?"":" on"}" ${attr}="${esc(key)}|" aria-pressed="${!cur}">All regions</button>${allRegs().map(r=>{const on=!!cur&&cur.includes(r);return `<button class="ichip${on?" on":""}" ${attr}="${esc(key)}|${esc(r)}" aria-pressed="${on}">${esc(r)}</button>`}).join("")}</div>`;
+const regToggle=(cur,r)=>{if(!r)return null;const n=(cur||[]).includes(r)?(cur||[]).filter(x=>x!==r):(cur||[]).concat([r]);return n.length?REGION_ORDER.filter(x=>n.includes(x)):null};
 const ibAgo=t=>{const d=Math.floor((Date.now()-new Date(t))/864e5);return d<=0?"today":d===1?"yesterday":d+" days ago"};
 function inboundPanel(){
   const nw=INBOUND.filter(i=>i.status==="new"),done=INBOUND.filter(i=>i.status!=="new");
@@ -1084,6 +1094,7 @@ function inboundModal(){
     ${i.status==="new"?`<div class="seg ib-seg" role="group" aria-label="Reply">${IB_ROUTES.map(([k,l])=>`<button data-ibroute="${k}" aria-pressed="${k===route}">${l}</button>`).join("")}</div>
     <label class="fl">Subject<input id="ib-subj" value="${esc(dr.subject||"")}"></label>
     <label class="fl">Reply<textarea id="ib-body" rows="11">${esc(dr.body||"")}</textarea></label>
+    ${route==="decline"?"":`<div class="ib-regs"><b>Guides they'll see in the portal</b>${regChips("data-ibreg",i.id,(i.regions&&i.regions.length)?i.regions:null)}<p class="note">Used when you give them portal access${regOf(i.company)?", and already applied to their page":""}.</p></div>`}
     <div class="acts">${route==="invite"?`<button class="btn" id="ib-access">Give portal access</button>`:""}<button class="btn primary" id="ib-send">Open in email</button><button class="btn" id="ib-mark">Mark as replied</button><button class="lnk" id="ib-dismiss">Not a partner request</button></div>
     ${route==="invite"?`<p class="note">Give portal access first, so their sign-in works when they read the email.</p>`:""}`
     :`<p class="note">${i.status==="dismissed"?"Dismissed":"Replied ("+((IB_ROUTES.find(r=>r[0]===i.route)||["","reply"])[1]).toLowerCase()+")"}${i.by?" by "+esc(i.by):""}${i.on?", "+ibAgo(i.on):""}. <button class="lnk" id="ib-reopen">Move back to new</button></p>`}
@@ -1431,6 +1442,17 @@ function bind(){
   document.querySelectorAll("[data-ibclose]").forEach(el=>el.addEventListener("click",e=>{if(e.target!==el)return;IB=null;render()}));
   const ibKeep=()=>{if(!IB||IB==="__done")return;const i=INBOUND.find(x=>x.id===IB);if(!i||!$("ib-subj"))return;const r=IBR[i.id]||IB_DEF[i.verdict];(IBD[i.id]=IBD[i.id]||{})[r]={subject:$("ib-subj").value,body:$("ib-body").value}};
   document.querySelectorAll("[data-ibroute]").forEach(el=>el.addEventListener("click",()=>{ibKeep();IBR[IB]=el.dataset.ibroute;render()}));
+  document.querySelectorAll("[data-ibreg]").forEach(el=>el.addEventListener("click",async()=>{ibKeep();const [id,r]=el.dataset.ibreg.split("|");const i=INBOUND.find(x=>x.id===id);if(!i)return;
+    const prev=i.regions||null,next=regToggle(prev,r);i.regions=next;render();
+    const {error}=await sb.rpc("partners_team_inbound_regions",{p_session:SESSION,p_id:id,p_regions:next||[]});
+    if(error){i.regions=prev;render();toast("Couldn't save: "+error.message);return}
+    const p=PROVIDERS.find(x=>x.name.toLowerCase()===String(i.company).toLowerCase());if(p){p.regions=next;render()}}));
+  document.querySelectorAll("[data-preg]").forEach(el=>el.addEventListener("click",async()=>{const [c,r]=el.dataset.preg.split("|");
+    let p=PROVIDERS.find(x=>x.name===c);if(!p){p={name:c,regions:null};PROVIDERS.push(p)}
+    const prev=p.regions||null,next=regToggle(prev,r);p.regions=next;openD.add("d-acc");render();
+    const {error}=await sb.rpc("partners_team_regions",{p_session:SESSION,p_provider:c,p_regions:next||[]});
+    if(error){p.regions=prev;render();toast("Couldn't save: "+error.message);return}
+    toast(next?c+" now sees "+regList(next)+" only":c+" sees all regions")}));
   if($("ib-send"))$("ib-send").addEventListener("click",async()=>{ibKeep();const i=INBOUND.find(x=>x.id===IB);const r=IBR[i.id]||IB_DEF[i.verdict];
     openMail(i.email,$("ib-subj").value,$("ib-body").value);if(await ibSet(i.id,"replied",r)){toast("Marked as replied");IB=null;setTimeout(render,400)}});
   if($("ib-mark"))$("ib-mark").addEventListener("click",async()=>{ibKeep();const i=INBOUND.find(x=>x.id===IB);if(await ibSet(i.id,"replied",IBR[i.id]||IB_DEF[i.verdict])){toast("Marked as replied");IB=null;render()}});
