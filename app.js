@@ -1062,7 +1062,11 @@ function resultsPanel(){
     <p class="note">${mlab(months[0])}${months.length>1?" to "+mlab(months[months.length-1]):""}${months.includes(months[months.length-1])&&RP!=="prev"?" (this month so far)":""}. Click a partner for month by month.
       Sales and commission come from the sales feed (Impact, Saily, Travelpayouts), placements and fees from KPI Stats (placements, the Ubigi retainer, review fees)${upd?", updated "+upd:""}. Pending sales count, reversed ones don't.
       Clicks are real readers clicking through to the partner, with bots and our own browser removed, tracked since 4 Nov 2025. Partner result is their sale amount less our commission and placements, before their own costs. Per click is our commission divided by clicks, without placements and fees.</p></section>`}
-const IB_ROUTES=[["invite","Invite to portal"],["review","Review first"],["decline","Decline"]];
+const IB_ROUTES=[["invite","Invite to portal"],["both","Review + portal"],["review","Review first"],["decline","Decline"]];
+const IB_ACCESS=r=>r==="invite"||r==="both";
+// "Review + portal" for requests saved before that option existed
+const ibBoth=i=>{const n=(i.name||"there").split(" ")[0],rg=(i.regions&&i.regions.length)?"in our "+regList(i.regions)+" guides":"across our 170+ country guides";
+  return {subject:((i.drafts||{}).review||{}).subject||"",body:`Hi ${n},\n\nThanks for getting in touch.\n\nWe only recommend eSIMs we've tested ourselves, so we'd like to start with a hands-on review article on Nomadwise (€${S.review||600}). We use ${i.company} ourselves and share our experience with our readers. If you'd like to go ahead, just reply and we'll send the details.\n\nIn the meantime, we've set you up on our partner portal, where you can see which 1st and 2nd positions are open ${rg}, with prices.\n\n1. Go to partners.nomadwise.io\n2. Enter ${i.email||"your work email"} and we'll email you a sign-in link. No password needed, and the link works for an hour.\n3. Tick what you'd like, press Review selection, then Send proposal to Nomadwise.\n\nBest,\nThe Nomadwise team`}};
 const IB_DEF={green:"invite",amber:"review",red:"decline"};
 const IB_LBL={green:"Looks strong",amber:"Review first",red:"Not a fit"};
 const regList=r=>r.length<=1?(r[0]||""):r.slice(0,-1).join(", ")+" and "+r[r.length-1];
@@ -1082,7 +1086,7 @@ function inboundModal(){
     return `<div class="modal" data-ibclose="1" role="dialog" aria-modal="true" aria-labelledby="ib-t"><div class="modal-in gmodal ibm"><div class="gm-h"><h2 id="ib-t">Handled partner requests</h2><button class="x" data-ibclose="1" aria-label="Close">×</button></div>
       <div class="ib-scroll">${done.map(i=>`<button class="ib-row" data-ib="${i.id}"><span class="ib-dot ${i.verdict}"></span><span class="ib-t"><b>${esc(i.company)}</b><small>${i.status==="dismissed"?"Dismissed":(IB_ROUTES.find(r=>r[0]===i.route)||["","Replied"])[1]}${i.by?" by "+esc(i.by.split("@")[0]):""}${i.on?" · "+ibAgo(i.on):""}</small></span><span class="gx">›</span></button>`).join("")}</div></div></div>`}
   const i=INBOUND.find(x=>x.id===IB);if(!i)return "";
-  const route=IBR[i.id]||IB_DEF[i.verdict];const dr=(IBD[i.id]&&IBD[i.id][route])||((i.drafts||{})[route])||{subject:"",body:""};
+  const route=IBR[i.id]||IB_DEF[i.verdict];const dr=(IBD[i.id]&&IBD[i.id][route])||((i.drafts||{})[route])||(route==="both"?ibBoth(i):{subject:"",body:""});
   const flagCls=f=>f==="good"?"ok":f==="bad"?"due":f==="warn"?"soon":"";
   return `<div class="modal" data-ibclose="1" role="dialog" aria-modal="true" aria-labelledby="ib-t"><div class="modal-in gmodal ibm">
     <div class="gm-h"><h2 id="ib-t">${esc(i.company)} <span class="pill ${i.verdict==="green"?"ok":i.verdict==="amber"?"soon":"due"}">${IB_LBL[i.verdict]}</span></h2><button class="x" data-ibclose="1" aria-label="Close">×</button></div>
@@ -1095,8 +1099,8 @@ function inboundModal(){
     <label class="fl">Subject<input id="ib-subj" value="${esc(dr.subject||"")}"></label>
     <label class="fl">Reply<textarea id="ib-body" rows="11">${esc(dr.body||"")}</textarea></label>
     ${route==="decline"?"":`<div class="ib-regs"><b>Guides they'll see in the portal</b>${regChips("data-ibreg",i.id,(i.regions&&i.regions.length)?i.regions:null)}<p class="note">Used when you give them portal access${regOf(i.company)?", and already applied to their page":""}.</p></div>`}
-    <div class="acts">${route==="invite"?`<button class="btn" id="ib-access">Give portal access</button>`:""}<button class="btn primary" id="ib-send">Open in email</button><button class="btn" id="ib-mark">Mark as replied</button><button class="lnk" id="ib-dismiss">Not a partner request</button></div>
-    ${route==="invite"?`<p class="note">Give portal access first, so their sign-in works when they read the email.</p>`:""}`
+    <div class="acts">${IB_ACCESS(route)?`<button class="btn" id="ib-access">Give portal access</button>`:""}<button class="btn primary" id="ib-send">Open in email</button><button class="btn" id="ib-mark">Mark as replied</button><button class="lnk" id="ib-dismiss">Not a partner request</button></div>
+    ${IB_ACCESS(route)?`<p class="note">Give portal access first, so their sign-in works when they read the email.</p>`:""}`
     :`<p class="note">${i.status==="dismissed"?"Dismissed":"Replied ("+((IB_ROUTES.find(r=>r[0]===i.route)||["","reply"])[1]).toLowerCase()+")"}${i.by?" by "+esc(i.by):""}${i.on?", "+ibAgo(i.on):""}. <button class="lnk" id="ib-reopen">Move back to new</button></p>`}
     </div></div></div>`}
 async function ibSet(id,status,route){const {error}=await sb.rpc("partners_team_inbound",{p_session:SESSION,p_id:id,p_status:status,p_route:route||null});
