@@ -231,7 +231,7 @@ function showPartner(data){
   ROLE="provider"; ME=data.provider; mode="prov"; asProv=ME;
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   ARTS=(data.articles||[]).map(a=>({name:a.name,region:a.region,grp:a.grp,p1:+a.p1,p2:+a.p2,slots:a.slots.map(s=>({pos:s.pos,prov:s.prov||"",exp:s.exp||"",flag:s.flag||""}))}));
-  TOTALS=data.totals; setRegions(); visStart=Date.now(); MYREGIONS=(data.regions&&data.regions.length)?data.regions:null;
+  TOTALS=data.totals; setRegions(); visStart=Date.now(); MYREGIONS=(data.regions&&data.regions.length)?data.regions:null; REVIEW_DONE=!!data.reviewDone; if(REVIEW_DONE)reviews=0;
   BIDS=data.bids||[]; NOBID=new Set(data.noBid||[]); POPULAR=data.popular||[];
   const lo=data.lastOffer;
   if(lo&&lo.kind==="proposal"&&(lo.status==="new"||lo.status==="accepted")){
@@ -263,7 +263,7 @@ function applyTeamData(data){
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   SALES_FROM=data.salesFrom||null; PAYMENTS=data.payments||[]; SHOWN=data.shown||{};SHOWN_AT=data.shownAt||null; SCEN=data.scenarios||{};
   ARTS=(data.articles||[]).map(r=>({name:r.name,region:r.region,views:r.views,clicks:r.clicks,sales:r.sales||null,mon:parseMonthly(r.monthly),slots:[{pos:1,prov:r.p1_prov||"",exp:r.p1_exp||"",flag:r.p1_flag||""},{pos:2,prov:r.p2_prov||"",exp:r.p2_exp||"",flag:r.p2_flag||""}]}));
-  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=data.activity||[]; TEAM_EV=data.teamActivity||[]; MON_TOT=null; INBOUND=data.inbound||[]; RES=data.results||null; MYREGIONS=null;
+  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=data.activity||[]; TEAM_EV=data.teamActivity||[]; MON_TOT=null; INBOUND=data.inbound||[]; RES=data.results||null; MYREGIONS=null; REVIEWS=data.reviews||{}; REVIEW_DONE=false;
   offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailsOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
   setRegions();
 }
@@ -849,9 +849,10 @@ function teamPanels(){
       return sub("Nomadwise team")+team.map(row).join("")+sub("Partners")+(parts.map(row).join("")||'<tr><td colspan="5" class="muted">No partners yet.</td></tr>')
         +(none.length?`<tr><td colspan="5" class="muted" style="font-size:.86rem">No one from ${esc(none.join(", "))} yet. Add their contact below so they can sign in.</td></tr>`:"")})()}
     </tbody></table></div>
-    ${(()=>{const cos=[...new Set(ACCESS.filter(x=>x.provider).map(x=>x.provider))].sort();if(!cos.length)return "";
-      return `<h3 style="margin:14px 0 4px">Which guides each partner can see</h3><p class="note">All regions unless you pick some. Pick one or more to show that partner only those guides (plus any slots they already hold). Changes apply the next time their page loads.</p>
-      <div class="ints">${cos.map(c=>`<div class="int"><b>${esc(c)}</b>${regChips("data-preg",c,regOf(c))}</div>`).join("")}</div>`})()}
+    ${(()=>{const cos=[...new Set(ACCESS.filter(x=>x.provider).map(x=>x.provider).concat(liveCos().map(p=>p.name)))].sort();if(!cos.length)return "";
+      return `<h3 style="margin:14px 0 4px">Each partner's page</h3><p class="note">Guides: all regions unless you pick some. Pick one or more to show that partner only those guides (plus any slots they already hold). Tick "Review article already done" for partners we've already reviewed, so the review add-on doesn't show. Changes apply the next time their page loads.</p>
+      <div class="ints">${cos.map(c=>{const r=REVIEWS[c];return `<div class="int"><b>${esc(c)}</b>${regChips("data-preg",c,regOf(c))}
+        <label class="chk rv-done"><input type="checkbox" data-rvdone="${esc(c)}" ${r?"checked":""}> Review article already done${r&&r.url?` <a href="${esc(r.url)}" target="_blank" rel="noopener">view</a>`:""} <span class="muted">(hides the review add-on on their page)</span></label></div>`}).join("")}</div>`})()}
     <form class="access-add" id="accform">
       <input id="na-name" placeholder="Name, e.g. Simon Martin" aria-label="Name" required>
       <input id="na-email" type="email" placeholder="name@company.com" aria-label="Email" required>
@@ -1028,7 +1029,7 @@ let GEDIT=null, OPEN_NOW=[0,0,0]; const GEXP=new Set();
 // ---------- At a glance: tap a number to see what's behind it ----------
 let GLANCE=null;
 // ---------- inbound partner requests (admin, right-hand column) ----------
-let INBOUND=[], IB=null, IBR={}, IBD={}; let MYREGIONS=null;
+let INBOUND=[], IB=null, IBR={}, IBD={}; let MYREGIONS=null; let REVIEWS={}, REVIEW_DONE=false;
 // ---------- partner results (admin only, eSIM) ----------
 let RES=null, RP="12", ROPEN=new Set(), TVIEW=(()=>{try{return localStorage.getItem("nw_tview")||"place"}catch(e){return "place"}})();
 const RPER=[["12","Last 12 months"],["3","Last 3 months"],["prev","Last month"],["this","This month"]];
@@ -1286,7 +1287,7 @@ function railPanel(v){
       <label class="fl">Note for the Nomadwise team (optional)<textarea id="o-note" rows="2" maxlength="3000">${esc(draftNote)}</textarea></label>
       <button class="btn primary" type="submit" ${(T.slots||reviews)&&!sending?"":"disabled"}>${sending?"Sending…":"Send to Nomadwise"}</button>
       <p class="note">Prices are fixed, with the package discount applied automatically. One open request at a time; we reply within 2 working days.</p>
-    </form>`}</section>${confirmOffer?"":addonPanel()}`;
+    </form>`}</section>${confirmOffer||REVIEW_DONE?"":addonPanel()}`;
 }
 
 function mbar(){
@@ -1458,6 +1459,10 @@ function bind(){
     const {error}=await sb.rpc("partners_team_inbound_regions",{p_session:SESSION,p_id:id,p_regions:next||[]});
     if(error){i.regions=prev;render();toast("Couldn't save: "+error.message);return}
     const p=PROVIDERS.find(x=>x.name.toLowerCase()===String(i.company).toLowerCase());if(p){p.regions=next;render()}}));
+  document.querySelectorAll("[data-rvdone]").forEach(el=>el.addEventListener("change",async()=>{const c=el.dataset.rvdone,on=el.checked;
+    const {error}=await sb.rpc("partners_team_review",{p_session:SESSION,p_provider:c,p_on:on,p_url:null});
+    if(error){el.checked=!on;toast("Couldn't save: "+error.message);return}
+    if(on)REVIEWS[c]=REVIEWS[c]||{url:null};else delete REVIEWS[c];openD.add("d-acc");render();toast(on?c+": review add-on hidden":c+": review add-on showing again")}));
   document.querySelectorAll("[data-preg]").forEach(el=>el.addEventListener("click",async()=>{const [c,r]=el.dataset.preg.split("|");
     let p=PROVIDERS.find(x=>x.name===c);if(!p){p={name:c,regions:null};PROVIDERS.push(p)}
     const prev=p.regions||null,next=regToggle(prev,r);p.regions=next;openD.add("d-acc");render();

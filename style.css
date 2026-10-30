@@ -514,3 +514,6 @@ button.glance:disabled{cursor:default;opacity:.7}
 .rv-card h3{margin:0 0 6px}
 .rv-pts li::before{background:none;color:var(--accent);font-size:.85rem;width:auto;height:auto;display:inline;margin:0}
 .rv-card.on{box-shadow:none;border-color:var(--accent)}
+/* Group headings: no coloured side stripe */
+.ghead{border-left:0;padding-left:14px}
+.rv-done{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;margin-top:8px;font-size:.86rem}
