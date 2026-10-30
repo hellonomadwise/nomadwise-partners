@@ -263,7 +263,7 @@ function applyTeamData(data){
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   SALES_FROM=data.salesFrom||null; PAYMENTS=data.payments||[]; SHOWN=data.shown||{};SHOWN_AT=data.shownAt||null; SCEN=data.scenarios||{};
   ARTS=(data.articles||[]).map(r=>({name:r.name,region:r.region,views:r.views,clicks:r.clicks,sales:r.sales||null,mon:parseMonthly(r.monthly),slots:[{pos:1,prov:r.p1_prov||"",exp:r.p1_exp||"",flag:r.p1_flag||""},{pos:2,prov:r.p2_prov||"",exp:r.p2_exp||"",flag:r.p2_flag||""}]}));
-  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=data.activity||[]; TEAM_EV=data.teamActivity||[]; MON_TOT=null; INBOUND=data.inbound||[]; RES=data.results||null; MYREGIONS=null; REVIEWS=data.reviews||{}; REVIEW_DONE=false;
+  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=(data.activity||[]).filter(e=>!IGNORE_ACT.includes(String(e.email||"").toLowerCase())); TEAM_EV=data.teamActivity||[]; MON_TOT=null; INBOUND=data.inbound||[]; RES=data.results||null; MYREGIONS=null; REVIEWS=data.reviews||{}; REVIEW_DONE=false;
   offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailsOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
   setRegions();
 }
@@ -536,7 +536,7 @@ function activityPanel(){
     return `<details class="rg"><summary><b>${fmtD(v.start)}, ${tm(v.start).slice(0,5)}</b> · ${v.secs?mins(v.secs):"under a minute"}${v.scroll?" · scrolled "+v.scroll+"%":""} · ${v.steps.filter(s=>s.kind!=="time_on_page").length} actions${i.device?` <span class="muted">· ${esc(i.device)}, ${esc(i.browser)} on ${esc(i.os)}${i.tz?", "+esc(i.tz):""}</span>`:""}</summary>
       <div class="cur" style="margin:6px 0 4px 14px">${v.steps.length?v.steps.map(s=>`<div class="ci" style="grid-template-columns:auto minmax(0,1fr);padding:4px 0"><span class="muted mono" style="font-size:.76rem">${tm(s.t)}</span><span style="font-size:.86rem">${evText(s)}</span></div>`).join(""):'<p class="muted" style="font-size:.86rem">Opened the page and looked around without clicking anything.</p>'}</div></details>`};
   // one line per partner (everyone with partner access, plus anyone with activity), newest first
-  ACCESS.filter(x=>x.provider&&!by[x.email]).forEach(x=>{by[x.email]={email:x.email,provider:x.provider,visits:0,secs:0,last:null,added:new Map(),regions:{},searches:new Set(),offers:0,flags:{},taps:new Set(),never:true}});
+  ACCESS.filter(x=>x.provider&&!by[x.email]&&!IGNORE_ACT.includes(String(x.email).toLowerCase())).forEach(x=>{by[x.email]={email:x.email,provider:x.provider,visits:0,secs:0,last:null,added:new Map(),regions:{},searches:new Set(),offers:0,flags:{},taps:new Set(),never:true}});
   const all=Object.values(by).sort((x,y)=>(y.last||0)-(x.last||0));
   const flagTxt=p=>Object.entries(p.flags).map(([k,n])=>({copy_attempt:"copy",select_attempt:"select",right_click:"right-click",print_attempt:"print",save_attempt:"save",source_attempt:"view source"}[k]||k)+" ×"+n).join(", ");
   const line=p=>{const unsent=[...p.added.keys()];const vis=p.never?[]:visitsOf(p.email);const regs=Object.entries(p.regions).sort((a,b)=>b[1]-a[1]).map(r=>r[0]);const id="pa-"+slug(p.email);
@@ -1030,6 +1030,8 @@ let GEDIT=null, OPEN_NOW=[0,0,0]; const GEXP=new Set();
 let GLANCE=null;
 // ---------- inbound partner requests (admin, right-hand column) ----------
 let INBOUND=[], IB=null, IBR={}, IBD={}; let MYREGIONS=null; let REVIEWS={}, REVIEW_DONE=false;
+// Our own test logins: never shown in partner activity, visits or "picked but not sent"
+const IGNORE_ACT=["jonnythebackpacker@gmail.com"];
 // ---------- partner results (admin only, eSIM) ----------
 let RES=null, RP="12", ROPEN=new Set(), TVIEW=(()=>{try{return localStorage.getItem("nw_tview")||"place"}catch(e){return "place"}})();
 const RPER=[["12","Last 12 months"],["3","Last 3 months"],["prev","Last month"],["this","This month"]];
