@@ -861,7 +861,7 @@ function teamPanels(){
       <button class="btn small primary" type="submit">Give access</button></form>
     <p class="note">Giving access doesn't email anyone. Tell them to sign in at partners.nomadwise.io, or press Email sign-in link.</p></section>
     <section class="panel internal"><div class="phead"><h2>What each partner is looking for</h2></div>
-    <p class="note">Note what each partner told you on a call. Their page then shows "Picked for you" from these, best sellers first. Without it, they see our most read guides with a slot open. Each partner only ever sees their own.</p>
+    <p class="note">Note what each partner has asked about, by email or on a call. Their page then shows "Picked for you": what's open in those guides or regions. Leave it empty and nothing is picked out for them. Each partner only ever sees their own.</p>
     <div class="ints">${liveCos().map(p=>{const I=interestOf(p.name);return `<div class="int"><b>${esc(p.name)}</b>
       <div class="int-r">${REGION_ORDER.filter(r=>ARTS.some(a=>regionOf[a.name]===r)).map(r=>`<button class="ichip${I.regions.includes(r)?" on":""}" data-intr="${esc(p.name)}|${esc(r)}" aria-pressed="${I.regions.includes(r)}">${esc(r)}</button>`).join("")}</div>
       <div class="int-arts">${I.articles.map(n=>`<span class="pchip">${esc(n)}<button class="x" data-intdel="${esc(p.name)}|${esc(n)}" aria-label="Remove ${esc(n)}">×</button></span>`).join("")}
@@ -966,7 +966,7 @@ function myRegions(v){const r=new Set(interestOf(v).regions);ARTS.forEach(a=>a.s
 const interestOf=v=>{const I=((S.interests||{})[v])||{};return {regions:I.regions||[],articles:I.articles||[]}};
 const hasInterest=v=>{const I=interestOf(v);return I.regions.length+I.articles.length>0};
 function picksFor(v){
-  const I=interestOf(v),told=hasInterest(v),seen=new Set();
+  const I=interestOf(v),told=hasInterest(v),seen=new Set();if(!told)return [];
   const order=POPULAR.map(n=>ARTS.find(a=>a.name===n)).filter(Boolean).concat(ARTS);
   const cand=[];order.forEach(a=>{if(seen.has(a.name))return;seen.add(a.name);
     const s=a.slots.find(s=>{const st=status(a,s,v);return st.k==="available"&&st.sel});if(!s)return;
@@ -1472,7 +1472,14 @@ function bind(){
   if($("ib-access"))$("ib-access").addEventListener("click",async()=>{ibKeep();const i=INBOUND.find(x=>x.id===IB);
     if(!i.email){toast("No email on this request");return}
     const {error}=await sb.rpc("partners_team_access",{p_session:SESSION,p_name:i.name||i.company,p_email:i.email,p_provider:i.company,p_action:"add"});
-    if(error){toast(error.message);return}toast("Access given to "+i.email+". They can sign in at partners.nomadwise.io.");reloadTeam()});
+    if(error){toast(error.message);return}
+    const w=(i.wants||[]).filter(n=>ARTS.some(a=>a.name===n)),r=i.regions||[];
+    if(w.length||r.length){S.interests=S.interests||{};const I=S.interests[i.company]=S.interests[i.company]||{regions:[],articles:[]};
+      I.articles=[...new Set((I.articles||[]).concat(w))];I.regions=[...new Set((I.regions||[]).concat(r))];
+      const s2=Object.assign({},S);delete s2.contracts;const {error:e2}=await sb.rpc("partners_team_save_settings",{p_session:SESSION,p_s:s2});
+      toast(e2?"Access given, but their interests didn't save. Add them under What each partner is looking for.":"Access given. Their page picks out what's open in "+(w.length?w.join(", "):regList(r))+".")}
+    else toast("Access given to "+i.email+". They can sign in at partners.nomadwise.io.");
+    reloadTeam()});
   if(IB&&!bind._ibesc){bind._ibesc=true;document.addEventListener("keydown",e=>{if(e.key==="Escape"&&IB){IB=null;render()}})}
   document.querySelectorAll("[data-gclose]").forEach(el=>el.addEventListener("click",e=>{if(e.target!==el)return;GLANCE=null;render()}));
   document.querySelectorAll("[data-gren]").forEach(el=>el.addEventListener("click",()=>{const id="rn-"+slug(el.dataset.gren);GLANCE=null;openD.add(id);render();setTimeout(()=>{const d=$(id);if(d)d.scrollIntoView({behavior:"smooth",block:"start"})},30)}));
