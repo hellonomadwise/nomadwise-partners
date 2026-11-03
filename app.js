@@ -33,7 +33,7 @@ const regionOf={};
 let mode="team", asProv="__new";
 const sel=new Map();
 let reviews=0, submitted=null, laterOpen=false, sending=false, confirmOffer=null, draftNote="";
-const openD=new Set();
+const openD=new Set();let ACCADD=false,ACCPROV="";
 const propOpt=new Set(); let propAccepted=false, propConfirm=false, PE=null, peQ="";
 let filt={q:"",tier:"",avail:false,regions:new Set(),region:"",all:false,prov:"",ppos:""}; let POPULAR=[];
 const drafts={};
@@ -263,7 +263,7 @@ function applyTeamData(data){
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   SALES_FROM=data.salesFrom||null; PAYMENTS=data.payments||[]; SHOWN=data.shown||{};SHOWN_AT=data.shownAt||null; SCEN=data.scenarios||{};
   ARTS=(data.articles||[]).map(r=>({name:r.name,region:r.region,views:r.views,clicks:r.clicks,sales:r.sales||null,mon:parseMonthly(r.monthly),slots:[{pos:1,prov:r.p1_prov||"",exp:r.p1_exp||"",flag:r.p1_flag||""},{pos:2,prov:r.p2_prov||"",exp:r.p2_exp||"",flag:r.p2_flag||""}]}));
-  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=(data.activity||[]).filter(e=>!IGNORE_ACT.includes(String(e.email||"").toLowerCase())); TEAM_EV=data.teamActivity||[]; MON_TOT=null; INBOUND=data.inbound||[]; RES=data.results||null; MYREGIONS=null; REVIEWS=data.reviews||{}; REVIEW_DONE=false;
+  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=(data.activity||[]).filter(e=>!IGNORE_ACT.includes(String(e.email||"").toLowerCase())); TEAM_EV=data.teamActivity||[]; MON_TOT=null; INBOUND=data.inbound||[]; RES=data.results||null; POSRES=data.posres||null; MYREGIONS=null; REVIEWS=data.reviews||{}; REVIEW_DONE=false;
   offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailsOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
   setRegions();
 }
@@ -419,7 +419,7 @@ function render(){
     $("pv-open").addEventListener("click",()=>startPreview($("as-prov").value));
   }
   const who="<b>"+esc(v)+"</b>";
-  $("forwho").innerHTML=v===null?`<b>Admin view</b> · visible only to Nomadwise <span class="seg tview" role="group" aria-label="Admin section"><button data-tview="place" aria-pressed="${TVIEW!=="results"}">Placements</button><button data-tview="results" aria-pressed="${TVIEW==="results"}">Partner results</button></span>`:(v==="__new"?"Prepared for <b>a new partner</b>":"Prepared for "+who);
+  $("forwho").innerHTML=v===null?`<b>Admin view</b> · visible only to Nomadwise <span class="seg tview" role="group" aria-label="Admin section"><button data-tview="place" aria-pressed="${TVIEW!=="results"&&TVIEW!=="pos"}">Placements</button><button data-tview="results" aria-pressed="${TVIEW==="results"}">Partner results</button><button data-tview="pos" aria-pressed="${TVIEW==="pos"}">By position</button></span>`:(v==="__new"?"Prepared for <b>a new partner</b>":"Prepared for "+who);
   if(ROLE==="provider"){document.querySelector("header.top h1").textContent=MYNAME?"Welcome, "+firstOf(MYNAME):"Partner placements"}
   const totalViews=TOTALS?+TOTALS.views:ARTS.reduce((t,a)=>t+a.views,0);
   const totalClicks=TOTALS?+TOTALS.clicks:ARTS.reduce((t,a)=>t+a.clicks,0);
@@ -429,7 +429,7 @@ function render(){
     <div class="stat"><span class="v">${totalClicks.toLocaleString("en-GB")}</span><span class="l">clicks to providers</span></div>
     ${v===null?`<div class="stat"><span class="v">${totalViews?(totalClicks/totalViews*100).toFixed(1):"0"}%</span><span class="l">blended click rate</span></div>`:""}`;
   OPEN_NOW=av;
-  if(v===null&&TVIEW==="results"){$("grid").style.gridTemplateColumns="minmax(0,1fr)";$("main").innerHTML=resultsPanel();$("rail").innerHTML="";bind();mbar();return}
+  if(v===null&&(TVIEW==="results"||TVIEW==="pos")){$("grid").style.gridTemplateColumns="minmax(0,1fr)";$("main").innerHTML=TVIEW==="pos"?posPanel():resultsPanel();$("rail").innerHTML="";bind();mbar();return}
   $("main").innerHTML=(v===null?teamPanels():"")+(v!==null&&v!=="__new"?currentPanel(v):"")+inventoryPanel(v)+bidBox()+(v===null?glanceModal():"");
   $("rail").innerHTML=railPanel(v);
   bind();
@@ -837,36 +837,43 @@ function teamPanels(){
     <tr><td><b>Review article</b></td><td class="muted">Dedicated add-on</td><td colspan="2">€ <input id="rv" data-s="review" type="number" min="0" value="${S.review}"></td></tr>
     <tr><td><b>Package discount</b></td><td class="muted">Premium and Standard only</td><td colspan="2"><input id="dm" data-s="discMin" type="number" min="1" value="${S.discMin}"> slots or more get <input id="dp" data-s="discPct" type="number" min="0" max="50" value="${S.discPct}"> % off</td></tr>
     </tbody></table></div></section>`;
-  const role=x=>x.provider?`Partner · ${esc(x.provider)}${regOf(x.provider)?` <span class="muted">· ${esc(regList(regOf(x.provider)))} only</span>`:""}`:'<span class="pill">Admin</span>';
-  const acc=`<section class="panel internal"><div class="phead"><h2 class="dup">Who has access<span class="tag-internal">Admin only</span></h2></div>
-    <p class="note">Everyone signs in at partners.nomadwise.io with their email, and only emails on this list get a sign-in link. Partners see their own page, greeted by name. Admins see this view. Removing someone signs them out straight away.</p>
-    <div class="scroll"><table class="tbl"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last sign-in</th><th></th></tr></thead><tbody>
-    ${(()=>{const row=x=>`<tr><td><b>${esc(x.name||"")}</b></td><td>${esc(x.email)}</td><td>${role(x)}</td><td class="muted">${x.last_login?fmtD(new Date(x.last_login)):"Not yet"}</td>
+  const lastIn=xs=>{const t=xs.map(x=>x.last_login).filter(Boolean).sort().pop();return t?fmtD(new Date(t)):null};
+  const pRow=x=>`<tr><td><b>${esc(x.name||"")}</b></td><td>${esc(x.email)}</td><td class="muted">${x.last_login?"Signed in "+fmtD(new Date(x.last_login)):"Not signed in yet"}</td>
       <td><div class="linkcell"><button class="btn small" data-sendlink="${esc(x.email)}">Email sign-in link</button>${x.email===ME?"":`<button class="btn small ghost" data-rmacc="${esc(x.email)}">Remove</button>`}</div></td></tr>`;
-      const sub=t=>`<tr class="acc-g"><td colspan="5">${t}</td></tr>`;
-      const team=ACCESS.filter(x=>!x.provider),parts=ACCESS.filter(x=>x.provider).sort((u,w)=>u.provider.localeCompare(w.provider)||String(u.name).localeCompare(String(w.name)));
-      const none=liveCos().filter(p=>!ACCESS.some(x=>x.provider===p.name)).map(p=>p.name);
-      return sub("Nomadwise team")+team.map(row).join("")+sub("Partners")+(parts.map(row).join("")||'<tr><td colspan="5" class="muted">No partners yet.</td></tr>')
-        +(none.length?`<tr><td colspan="5" class="muted" style="font-size:.86rem">No one from ${esc(none.join(", "))} yet. Add their contact below so they can sign in.</td></tr>`:"")})()}
-    </tbody></table></div>
-    ${(()=>{const cos=[...new Set(ACCESS.filter(x=>x.provider).map(x=>x.provider).concat(liveCos().map(p=>p.name)))].sort();if(!cos.length)return "";
-      return `<h3 style="margin:14px 0 4px">Each partner's page</h3><p class="note">Guides: all regions unless you pick some. Pick one or more to show that partner only those guides (plus any slots they already hold). Tick "Review article already done" for partners we've already reviewed, so the review add-on doesn't show. Changes apply the next time their page loads.</p>
-      <div class="ints">${cos.map(c=>{const r=REVIEWS[c];return `<div class="int"><b>${esc(c)}</b>${regChips("data-preg",c,regOf(c))}
-        <label class="chk rv-done"><input type="checkbox" data-rvdone="${esc(c)}" ${r?"checked":""}> Review article already done${r&&r.url?` <a href="${esc(r.url)}" target="_blank" rel="noopener">view</a>`:""} <span class="muted">(hides the review add-on on their page)</span></label></div>`}).join("")}</div>`})()}
-    <form class="access-add" id="accform">
+  const accTeam=ACCESS.filter(x=>!x.provider);
+  const accCos=[...new Set(ACCESS.filter(x=>x.provider).map(x=>x.provider).concat(liveCos().map(p=>p.name)))].sort((a,b)=>a.localeCompare(b));
+  const intRegs=REGION_ORDER.filter(r=>ARTS.some(a=>regionOf[a.name]===r));
+  const pco=c=>{const ppl=ACCESS.filter(x=>x.provider===c).sort((u,w)=>String(u.name).localeCompare(String(w.name)));
+    const I=interestOf(c),rg=regOf(c),rv=REVIEWS[c],id="pa-"+slug(c),li=lastIn(ppl),wants=I.regions.concat(I.articles);
+    return `<details class="pco" id="${id}" ${openD.has(id)?"open":""}><summary>
+      <span class="pco-n">${esc(c)}</span>
+      <span class="pco-m">${ppl.length?`${ppl.length} ${ppl.length===1?"person":"people"}<span class="muted"> · ${li?"last in "+li:"no sign-ins yet"}</span>`:'<span class="pill soon">No one yet</span>'}</span>
+      <span class="pco-m">${rg?esc(regList(rg))+" only":'<span class="muted">All regions</span>'}</span>
+      <span class="pco-m">${wants.length?esc(wants.slice(0,3).join(", "))+(wants.length>3?` <span class="muted">+${wants.length-3}</span>`:""):'<span class="muted">Nothing noted</span>'}</span>
+      <span>${rv?'<span class="pill ok">Reviewed</span>':""}</span></summary>
+    <div class="pco-in">
+      ${ppl.length?`<div class="scroll"><table class="tbl"><tbody>${ppl.map(pRow).join("")}</tbody></table></div>`:`<p class="note">No one from ${esc(c)} can sign in yet.</p>`}
+      <div><button class="btn small" data-accadd="${esc(c)}">+ Add someone from ${esc(c)}</button></div>
+      <div class="pco-set"><div><b>Guides on their page</b> <span class="muted">· all regions unless you pick some. Slots they hold always show.</span></div>${regChips("data-preg",c,rg)}
+        <label class="chk rv-done"><input type="checkbox" data-rvdone="${esc(c)}" ${rv?"checked":""}> Review article already done${rv&&rv.url?` <a href="${esc(rv.url)}" target="_blank" rel="noopener">view</a>`:""} <span class="muted">(hides the review add-on)</span></label></div>
+      <div class="pco-set"><div><b>What they're looking for</b> <span class="muted">· from emails or calls. Their page shows "Picked for you" from this. Leave empty and nothing is picked out.</span></div>
+        <div class="int-r">${intRegs.map(r=>`<button class="ichip${I.regions.includes(r)?" on":""}" data-intr="${esc(c)}|${esc(r)}" aria-pressed="${I.regions.includes(r)}">${esc(r)}</button>`).join("")}</div>
+        <div class="int-arts">${I.articles.map(n=>`<span class="pchip">${esc(n)}<button class="x" data-intdel="${esc(c)}|${esc(n)}" aria-label="Remove ${esc(n)}">×</button></span>`).join("")}
+          <input class="int-a" data-inta="${esc(c)}" list="int-arts" placeholder="${I.articles.length?"Add another article":"Add a specific article, e.g. Japan"}" aria-label="Add an article ${esc(c)} is interested in"></div></div>
+    </div></details>`};
+  const acc=`<section class="panel internal"><div class="phead"><h2 class="dup">Who has access<span class="tag-internal">Admin only</span></h2><button class="btn small ${ACCADD?"ghost":"primary"}" id="acc-new">${ACCADD?"Cancel":"+ Add person"}</button></div>
+    ${ACCADD?`<form class="access-add" id="accform">
       <input id="na-name" placeholder="Name, e.g. Simon Martin" aria-label="Name" required>
       <input id="na-email" type="email" placeholder="name@company.com" aria-label="Email" required>
       <select id="na-role" aria-label="Role"><option value="partner">Partner</option><option value="admin">Admin</option></select>
-      <select id="na-prov" aria-label="Partner company" required><option value="" disabled selected>Select a partner company</option>${PROVIDERS.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join("")}<option value="__new">New partner company…</option></select>
+      <select id="na-prov" aria-label="Partner company" required><option value="" disabled ${ACCPROV?"":"selected"}>Select a partner company</option>${PROVIDERS.map(p=>`<option value="${esc(p.name)}" ${p.name===ACCPROV?"selected":""}>${esc(p.name)}</option>`).join("")}<option value="__new">New partner company…</option></select>
       <input id="na-co" placeholder="Company name, e.g. Airalo" aria-label="New partner company" hidden>
       <button class="btn small primary" type="submit">Give access</button></form>
-    <p class="note">Giving access doesn't email anyone. Tell them to sign in at partners.nomadwise.io, or press Email sign-in link.</p></section>
-    <section class="panel internal"><div class="phead"><h2>What each partner is looking for</h2></div>
-    <p class="note">Note what each partner has asked about, by email or on a call. Their page then shows "Picked for you": what's open in those guides or regions. Leave it empty and nothing is picked out for them. Each partner only ever sees their own.</p>
-    <div class="ints">${liveCos().map(p=>{const I=interestOf(p.name);return `<div class="int"><b>${esc(p.name)}</b>
-      <div class="int-r">${REGION_ORDER.filter(r=>ARTS.some(a=>regionOf[a.name]===r)).map(r=>`<button class="ichip${I.regions.includes(r)?" on":""}" data-intr="${esc(p.name)}|${esc(r)}" aria-pressed="${I.regions.includes(r)}">${esc(r)}</button>`).join("")}</div>
-      <div class="int-arts">${I.articles.map(n=>`<span class="pchip">${esc(n)}<button class="x" data-intdel="${esc(p.name)}|${esc(n)}" aria-label="Remove ${esc(n)}">×</button></span>`).join("")}
-        <input class="int-a" data-inta="${esc(p.name)}" list="int-arts" placeholder="${I.articles.length?"Add another article":"Add a specific article, e.g. Japan"}" aria-label="Add an article ${esc(p.name)} is interested in"></div></div>`}).join("")}</div>
+    <p class="note" style="margin-top:-6px">Giving access doesn't email anyone. Press Email sign-in link afterwards to send them one.</p>`:`<p class="note">Only emails on this list can sign in at partners.nomadwise.io. Open a partner to see their people, which guides they see, and what they're looking for.</p>`}
+    <h3 class="acc-h">Partners · ${accCos.length}</h3>
+    <div class="pcos">${accCos.length?`<div class="pco-head"><span>Partner</span><span>People</span><span>Guides they see</span><span>Looking for</span><span>Review</span></div>`+accCos.map(pco).join(""):'<p class="muted" style="padding:12px">No partners yet.</p>'}</div>
+    <h3 class="acc-h">Nomadwise team · ${accTeam.length}</h3>
+    <div class="scroll"><table class="tbl"><tbody>${accTeam.map(pRow).join("")}</tbody></table></div>
     <datalist id="int-arts">${ARTS.map(a=>`<option value="${esc(a.name)}">`).join("")}</datalist></section>`;
   const order=["Top page"].concat(S.tiers.map(t=>t.name));const cg={};const capT=[0,0,0],openT=[0,0,0],cnt={};
   ARTS.forEach(a=>{const n=grp(a).name;cg[n]=cg[n]||[0,0,0];cnt[n]=(cnt[n]||0)+1;a.slots.forEach(s=>{const p=priceOf(a,s.pos);cg[n][s.pos]+=p;capT[s.pos]+=p;if(status(a,s,null).k==="available")openT[s.pos]+=p})});
@@ -1033,7 +1040,7 @@ let INBOUND=[], IB=null, IBR={}, IBD={}; let MYREGIONS=null; let REVIEWS={}, REV
 // Our own test logins: never shown in partner activity, visits or "picked but not sent"
 const IGNORE_ACT=["jonnythebackpacker@gmail.com"];
 // ---------- partner results (admin only, eSIM) ----------
-let RES=null, RP="12", ROPEN=new Set(), TVIEW=(()=>{try{return localStorage.getItem("nw_tview")||"place"}catch(e){return "place"}})();
+let POSRES=null, POPEN=new Set(); let RES=null, RP="12", ROPEN=new Set(), TVIEW=(()=>{try{return localStorage.getItem("nw_tview")||"place"}catch(e){return "place"}})();
 const RPER=[["12","Last 12 months"],["3","Last 3 months"],["prev","Last month"],["this","This month"]];
 function resMonths(){const now=new Date(),y=now.getFullYear(),m=now.getMonth();const k=(yy,mm)=>{const d=new Date(yy,mm,1);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")};
   if(RP==="this")return [k(y,m)];if(RP==="prev")return [k(y,m-1)];const n=RP==="3"?3:12;return Array.from({length:n},(_,i)=>k(y,m-n+1+i))}
@@ -1065,6 +1072,39 @@ function resultsPanel(){
     <p class="note">${mlab(months[0])}${months.length>1?" to "+mlab(months[months.length-1]):""}${months.includes(months[months.length-1])&&RP!=="prev"?" (this month so far)":""}. Click a partner for month by month.
       Sales and commission come from the sales feed (Impact, Saily, Travelpayouts), placements and fees from KPI Stats (placements, the Ubigi retainer, review fees)${upd?", updated "+upd:""}. Pending sales count, reversed ones don't.
       Clicks are real readers clicking through to the partner, with bots and our own browser removed, tracked since 4 Nov 2025. Partner result is their sale amount less our commission and placements, before their own costs. Per click is our commission divided by clicks, without placements and fees.</p></section>`}
+// Results by position: 1st vs 2nd (best guess of who held which slot in each month)
+const POS_ROWS=[["1","1st position","The brand in the top spot of a best eSIM guide"],["2","2nd position","The brand in the second spot"],["other","Elsewhere on a guide","A brand mentioned on the guide but not in 1st or 2nd at the time (3rd mentions, older links)"],["page","Reviews and other articles","Review articles and other non-guide pages. Review fees count here"],["none","Not linked to an article","Sales the network couldn't tie to a page"]];
+function posRows(months){const set=new Set(months),by={};POS_ROWS.forEach(([k])=>by[k]={p:k,clicks:0,sales:0,sale:0,com:0,plc:0,mon:{},br:{}});
+  const g=k=>by[k==="review"?"page":k]||by.other,gm=(r,m)=>r.mon[m]=r.mon[m]||{clicks:0,sales:0,sale:0,com:0,plc:0},gb=(r,b)=>r.br[b]=r.br[b]||{p:b,clicks:0,sales:0,sale:0,com:0,plc:0};
+  const add=(r,m,b,f,v)=>{r[f]+=v;gm(r,m)[f]+=v;gb(r,b)[f]+=v};
+  ((POSRES&&POSRES.sales)||[]).forEach(([k,m,b,n,sa,c])=>{if(!set.has(m))return;const r=g(k);add(r,m,b,"sales",+n);add(r,m,b,"sale",+sa);add(r,m,b,"com",+c)});
+  ((POSRES&&POSRES.clicks)||[]).forEach(([k,m,b,n])=>{if(!set.has(m))return;add(g(k),m,b,"clicks",+n)});
+  ((POSRES&&POSRES.fees)||[]).forEach(([k,m,b,a])=>{if(!set.has(m))return;add(g(k),m,b,"plc",+a)});
+  return POS_ROWS.map(([k])=>by[k])}
+function posCells(r){const tot=r.com+r.plc;
+  return `<td class="num">${r.clicks?r.clicks.toLocaleString("en-GB"):"–"}</td><td class="num">${r.sales||"–"}</td><td class="num">${r.sale?eur(r.sale):"–"}</td>
+    <td class="num">${r.com?eur(r.com):"–"}</td><td class="num">${r.plc?eur(r.plc):"–"}</td><td class="num"><b>${tot?eur(tot):"–"}</b></td>
+    <td class="num">${r.sales&&r.sale?eur(r.sale/r.sales):"–"}</td><td class="num">${r.clicks&&r.sales?pctS(r.sales,r.clicks):"–"}</td><td class="num">${r.clicks?"€"+(r.com/r.clicks).toFixed(2):"–"}</td><td class="num">${r.clicks?"€"+(tot/r.clicks).toFixed(2):"–"}</td>`}
+function posPanel(){
+  if(!POSRES||!(POSRES.sales||[]).length)return `<section class="panel"><h2>Results by position</h2><p class="muted">No figures loaded yet. They arrive with the next weekday refresh.</p></section>`;
+  const months=resMonths(),rows=posRows(months),lab=k=>(POS_ROWS.find(x=>x[0]===k)||[k,k])[1];
+  const T=rows.reduce((t,r)=>{["clicks","sales","sale","com","plc"].forEach(k=>t[k]+=r[k]);return t},{clicks:0,sales:0,sale:0,com:0,plc:0});
+  const mlab=m=>{const [y,mm]=m.split("-");return new Date(+y,+mm-1,1).toLocaleString("en-GB",{month:"short",year:"2-digit"})};
+  const meta=POSRES.meta||{};const upd=meta.sales_loaded?new Date(meta.sales_loaded).toLocaleDateString("en-GB",{day:"numeric",month:"short"}):"";
+  const r1=rows[0],r2=rows[1],tile=(v,l,sub)=>`<div class="rt"><span class="rv">${v}</span><span class="rl">${l}${sub?`<small>${sub}</small>`:""}</span></div>`;
+  const pc=r=>r.clicks?"€"+((r.com+r.plc)/r.clicks).toFixed(2):"–";
+  const head=`<tr><th>Position</th><th class="num">Clicks</th><th class="num">Sales</th><th class="num">Sale amount</th><th class="num">Our commission</th><th class="num">Placements &amp; fees</th><th class="num">Our total</th><th class="num" title="Average order value">Avg order</th><th class="num" title="Sales divided by clicks">Converted</th><th class="num" title="Our commission divided by clicks">Commission per click</th><th class="num" title="Commission plus placements and fees, divided by clicks">Total per click</th></tr>`;
+  const body=rows.map(r=>{const open=POPEN.has(r.p);const ms=months.filter(m=>r.mon[m]);const bs=Object.values(r.br).filter(b=>b.sales||b.plc||b.clicks>=10).sort((a,b)=>(b.com+b.plc)-(a.com+a.plc));
+    return `<tr class="rrow${open?" open":""}" data-pp="${r.p}" tabindex="0" title="${esc((POS_ROWS.find(x=>x[0]===r.p)||[])[2]||"")}"><td><span class="rcar" aria-hidden="true">${open?"▾":"▸"}</span> ${esc(lab(r.p))}</td>${posCells(r)}</tr>`+
+      (open?`<tr class="rmon"><td colspan="11" class="muted" style="font-size:.78rem">Month by month</td></tr>`+ms.map(m=>`<tr class="rmon"><td>${mlab(m)}</td>${posCells(r.mon[m])}</tr>`).join("")
+        +(bs.length?`<tr class="rmon"><td colspan="11" class="muted" style="font-size:.78rem">By partner</td></tr>`+bs.map(b=>`<tr class="rmon"><td>${esc(b.p)}</td>${posCells(b)}</tr>`).join(""):""):"")}).join("");
+  return `<section class="panel results"><div class="phead"><h2>Results by position <span class="muted" style="font-size:.9rem;font-weight:500">eSIM</span></h2>
+      <div class="seg" role="group" aria-label="Period">${RPER.map(([k,l])=>`<button data-rper="${k}" aria-pressed="${RP===k}">${l}</button>`).join("")}</div></div>
+    <div class="rtiles">${tile(eur(r1.com+r1.plc),"1st position, our total",`${r1.sales.toLocaleString("en-GB")} sales · ${pc(r1)} per click`)}${tile(eur(r2.com+r2.plc),"2nd position, our total",`${r2.sales.toLocaleString("en-GB")} sales · ${pc(r2)} per click`)}${tile(r1.clicks&&r2.clicks?pctS(r1.sales,r1.clicks)+" vs "+pctS(r2.sales,r2.clicks):"–","Converted, 1st vs 2nd","sales ÷ clicks")}${tile(eur(T.com+T.plc),"Our total, all eSIM",T.sales.toLocaleString("en-GB")+" sales")}</div>
+    <div class="rscroll"><table class="tbl rtbl"><thead>${head}</thead><tbody>${body}</tbody><tfoot><tr><td><b>Total</b></td>${posCells(T)}</tr></tfoot></table></div>
+    <p class="note">${mlab(months[0])}${months.length>1?" to "+mlab(months[months.length-1]):""}${RP!=="prev"?" (this month so far)":""}. Click a row for month by month and by partner.
+      Each sale and click is put in the position its brand held on that guide in that month, as best we know: before the May and August 2026 swaps, the brand that held the slot then; otherwise who our daily check sees on the page now, then the July 2026 positioning sheet, then the paid holder. So a few months will be slightly off where slots changed hands without a record.
+      Placements and fees are from KPI Stats, split by the 1st and 2nd position rows there (the Ubigi retainer counts as 1st, review fees as reviews). Clicks are real readers on the guides, bots and our own browser removed. Sales from the sales feed${upd?", updated "+upd:""}.</p></section>`}
 const IB_ROUTES=[["invite","Invite to portal"],["both","Review + portal"],["review","Review first"],["decline","Decline"]];
 const IB_ACCESS=r=>r==="invite"||r==="both";
 // "Review + portal" for requests saved before that option existed
@@ -1399,7 +1439,7 @@ function bind(){
   if(rva)rva.addEventListener("click",()=>{if(!submitted&&viewer()!==null){reviews=1;confirmOffer=null;track("review_change",{count:reviews});render()}});
   if(rm)rm.addEventListener("click",()=>{if(!submitted&&reviews>0){reviews--;confirmOffer=null;track("review_change",{count:reviews});render()}});
   if(rp)rp.addEventListener("click",()=>{if(!submitted&&viewer()!==null){reviews++;confirmOffer=null;track("review_change",{count:reviews});render()}});
-  document.querySelectorAll("details.qi,details.fold,#d-done,details[id^='vis-']").forEach(d=>d.addEventListener("toggle",()=>{if(d.open)openD.add(d.id);else openD.delete(d.id)}));
+  document.querySelectorAll("details.qi,details.fold,details.pco,#d-done,details[id^='vis-']").forEach(d=>d.addEventListener("toggle",()=>{if(d.open)openD.add(d.id);else openD.delete(d.id)}));
   const lt=$("later");if(lt)lt.addEventListener("toggle",()=>{laterOpen=lt.open;if(lt.open)track("view_later_placements",{})});
   const ra=$("renall");if(ra)ra.addEventListener("click",()=>{
     const v=viewer();const mine=[];ARTS.forEach(a=>a.slots.forEach(s=>{const st=status(a,s,v);if(st.k==="mine"&&renewable({st}))mine.push(key(a,s.pos))}));
@@ -1449,6 +1489,7 @@ function bind(){
     if(k==="visits"){openD.add("d-act");render();setTimeout(()=>{const d=$("d-act");if(d)d.scrollIntoView({behavior:"smooth",block:"start"})},30);return}
     GLANCE=k;render()}));
   document.querySelectorAll("[data-tview]").forEach(el=>el.addEventListener("click",()=>{TVIEW=el.dataset.tview;try{localStorage.setItem("nw_tview",TVIEW)}catch(e){};render()}));
+  document.querySelectorAll("[data-pp]").forEach(el=>{const t=()=>{const p=el.dataset.pp;POPEN.has(p)?POPEN.delete(p):POPEN.add(p);render()};el.addEventListener("click",t);el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();t()}})});
   document.querySelectorAll("[data-rper]").forEach(el=>el.addEventListener("click",()=>{RP=el.dataset.rper;render()}));
   document.querySelectorAll("[data-rp]").forEach(el=>{const t=()=>{const p=el.dataset.rp;ROPEN.has(p)?ROPEN.delete(p):ROPEN.add(p);render()};el.addEventListener("click",t);el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();t()}})});
   document.querySelectorAll("[data-ib]").forEach(el=>el.addEventListener("click",()=>{IB=el.dataset.ib;render()}));
@@ -1484,7 +1525,7 @@ function bind(){
     if(w.length||r.length){S.interests=S.interests||{};const I=S.interests[i.company]=S.interests[i.company]||{regions:[],articles:[]};
       I.articles=[...new Set((I.articles||[]).concat(w))];I.regions=[...new Set((I.regions||[]).concat(r))];
       const s2=Object.assign({},S);delete s2.contracts;const {error:e2}=await sb.rpc("partners_team_save_settings",{p_session:SESSION,p_s:s2});
-      toast(e2?"Access given, but their interests didn't save. Add them under What each partner is looking for.":"Access given. Their page picks out what's open in "+(w.length?w.join(", "):regList(r))+".")}
+      toast(e2?"Access given, but their interests didn't save. Open their row under Who has access to add them.":"Access given. Their page picks out what's open in "+(w.length?w.join(", "):regList(r))+".")}
     else toast("Access given to "+i.email+". They can sign in at partners.nomadwise.io.");
     reloadTeam()});
   if(IB&&!bind._ibesc){bind._ibesc=true;document.addEventListener("keydown",e=>{if(e.key==="Escape"&&IB){IB=null;render()}})}
@@ -1548,10 +1589,13 @@ function bind(){
   const nr=$("na-role"),np=$("na-prov");
   const sync=()=>{if(!nr)return;np.hidden=nr.value!=="partner";np.required=nr.value==="partner";$("na-co").hidden=nr.value!=="partner"||np.value!=="__new"};
   if(nr){nr.addEventListener("change",sync);np.addEventListener("change",sync);sync()}
+  if($("acc-new"))$("acc-new").addEventListener("click",()=>{ACCADD=!ACCADD;ACCPROV="";openD.add("d-acc");render();if(ACCADD&&$("na-name"))$("na-name").focus()});
+  document.querySelectorAll("[data-accadd]").forEach(el=>el.addEventListener("click",()=>{ACCADD=true;ACCPROV=el.dataset.accadd;openD.add("d-acc");render();
+    const f=$("accform");if(f)f.scrollIntoView({behavior:"smooth",block:"center"});if($("na-name"))$("na-name").focus({preventScroll:true})}));
   const af=$("accform");if(af)af.addEventListener("submit",async e=>{e.preventDefault();
     let prov=null;if(nr.value==="partner"){if(!np.value){toast("Select a partner company");np.focus();return}prov=np.value==="__new"?$("na-co").value.trim():np.value;if(!prov){toast("Add the company name");return}}
     const {error}=await sb.rpc("partners_team_access",{p_session:SESSION,p_name:$("na-name").value,p_email:$("na-email").value,p_provider:prov,p_action:"add"});
-    if(error){toast(error.message);return}toast("Access given. They can now sign in with that email.");openD.add("d-acc");reloadTeam()});
+    if(error){toast(error.message);return}toast("Access given. They can now sign in with that email.");openD.add("d-acc");if(prov)openD.add("pa-"+slug(prov));ACCADD=false;ACCPROV="";reloadTeam()});
   document.querySelectorAll("[data-sendlink]").forEach(el=>el.addEventListener("click",async()=>{
     const {error}=await sb.rpc("partners_team_access",{p_session:SESSION,p_name:null,p_email:el.dataset.sendlink,p_provider:null,p_action:"send"});
     toast(error?error.message:"Sign-in link sent to "+el.dataset.sendlink)}));

@@ -517,3 +517,22 @@ button.glance:disabled{cursor:default;opacity:.7}
 /* Group headings: no coloured side stripe */
 .ghead{border-left:0;padding-left:14px}
 .rv-done{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;margin-top:8px;font-size:.86rem}
+/* Who has access: one row per partner, opens for detail */
+.acc-h{margin:6px 0 -4px;font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.pcos{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+details.pco{border-top:1px solid var(--line);background:var(--surface)}
+.pco-head,details.pco>summary{display:grid;grid-template-columns:minmax(140px,1fr) minmax(170px,1.2fr) minmax(130px,1fr) minmax(0,1.3fr) 90px;gap:12px;align-items:center;padding:10px 14px}
+.pco-head{padding:8px 14px;background:var(--bg);font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+details.pco>summary{list-style:none;cursor:pointer;font-size:.88rem}
+details.pco>summary::-webkit-details-marker{display:none}
+details.pco>summary:hover{background:var(--bg)}
+.pco-n{font-weight:700}
+.pco-n::before{content:"▸ ";color:var(--muted);font-weight:400}
+details.pco[open]>summary .pco-n::before{content:"▾ "}
+details.pco[open]>summary{background:var(--bg);border-bottom:1px solid var(--line)}
+.pco-m{white-space:nowrap}
+.pco-in{display:flex;flex-direction:column;gap:12px;padding:12px 14px 16px}
+.pco-set{display:flex;flex-direction:column;gap:6px;padding-top:10px;border-top:1px solid var(--line);font-size:.88rem}
+.pco-in .tbl td{font-size:.86rem}
+.pco-m{overflow:hidden;text-overflow:ellipsis}
+@media (max-width:760px){.pco-head{display:none}details.pco>summary{display:flex;flex-wrap:wrap;gap:4px 14px}.pco-m{white-space:normal}.pco-n{width:100%}}
