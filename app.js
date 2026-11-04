@@ -269,7 +269,7 @@ function applyTeamData(data){
   SALES_FROM=data.salesFrom||null; PAYMENTS=data.payments||[]; SHOWN=data.shown||{};SHOWN_AT=data.shownAt||null; SCEN=data.scenarios||{};
   ARTS=(data.articles||[]).map(r=>({name:r.name,region:r.region,views:r.views,clicks:r.clicks,sales:r.sales||null,mon:parseMonthly(r.monthly),slots:[{pos:1,prov:r.p1_prov||"",exp:r.p1_exp||"",flag:r.p1_flag||""},{pos:2,prov:r.p2_prov||"",exp:r.p2_exp||"",flag:r.p2_flag||""}]}));
   PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=(data.activity||[]).filter(e=>!IGNORE_ACT.includes(String(e.email||"").toLowerCase())); TEAM_EV=data.teamActivity||[]; MON_TOT=null; INBOUND=data.inbound||[]; RES=data.results||null; POSRES=data.posres||null; MYREGIONS=null; REVIEWS=data.reviews||{}; REVIEW_DONE=false; PIPE=data.pipeline||[]; DEALS=data.deals||[]; setHolds(data.holds); CHECKS=data.checks||[];
-  offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailsOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
+  offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailsOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",dealNote:o.deal_note||"",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
   setRegions();
 }
 // Partner companies worth listing: someone from them can sign in, or they have (or had) a placement or contract
@@ -320,12 +320,12 @@ function invoice(o){
     ${o.kind==="proposal"?"":`<tr><td colspan="3" class="muted">Difference</td><td class="num ${gap<0?"neg":""}">${gap<0?"−":""}${eur(Math.abs(gap))} · ${pct}% of price</td></tr>`}</tfoot></table></div>`;
 }
 const ACT={
-  accept:{label:"Accept",what:"Drafts a confirmation. Approving opens it in your email app, ready to send. Then press Mark as agreed to record the deal here, and send the invoice. Each placement runs 12 months from going live."},
+  accept:{label:"Accept",what:"Drafts a confirmation. Approving opens it in your email app, ready to send, and records the deal: the slots show as taken to everyone else, 12 months from today. Then send the invoice."},
   counter:{label:"Counter",what:"Suggest a different price. Approving opens the reply in your email app. Hold the slots for them for 7 days while they decide."},
   decline:{label:"Decline",what:"Drafts a polite no and opens it in your email app. They can then send a new offer from their page."}
 };
 const ACT_BID={
-  accept:{label:"Accept",what:"Only once the current holder hasn't renewed. Drafts a confirmation to open in your email app. Then press Mark as agreed to record the deal here, and send the invoice."},
+  accept:{label:"Accept",what:"Only once the current holder hasn't renewed. Drafts a confirmation to open in your email app and records the deal, 12 months from today. Then send the invoice."},
   counter:{label:"Counter",what:"Suggest a different price. Approving opens the reply in your email app."},
   decline:{label:"Decline",what:"Pick the reason (the holder renewed, or the offer is too low) and a polite no is drafted. The holder is never named."}
 };
@@ -379,7 +379,7 @@ function openMail(to,subject,body){
 function actionBlock(o,i){
   if(o.sent)return `<div class="done"><b>${{accept:"Accepted",counter:"Countered",decline:"Declined"}[o.action]||"Answered"}</b>${o.decided?" · "+esc(o.decided):""}${o.preview?' <span class="muted">Preview only, nothing was sent.</span>':""}</div>
     ${o.draftText?`<details><summary class="note" style="cursor:pointer">The reply we sent</summary><div class="draft" style="margin-top:6px">${esc(o.draftText)}</div></details>`:""}
-    ${o.action==="accept"&&!o.preview?(o.kind==="proposal"?`<p class="note">To record the contract, use Record a deal under Deals and holds, deal type Ubigi monthly contract.</p>`:(DEALS.some(d=>d.offer===o.id&&!d.endedAt)?`<div class="done"><b>Recorded as a deal</b></div>`:`<div class="acts"><button class="btn small primary" data-agree="${esc(o.id)}">Mark as agreed</button></div><p class="note">Opens Record a deal, filled in from this offer, so you can check the dates, prices and invoice. Nothing is saved until you press Record.</p>`)):""}
+    ${o.action==="accept"&&!o.preview?(o.kind==="proposal"?`<p class="note">To record the contract, use Record a deal under Deals and holds, deal type Ubigi monthly contract.</p>`:(DEALS.some(d=>d.offer===o.id&&!d.endedAt)?`<p class="note">Recorded as a deal: these slots show as taken to everyone else.</p>`:`<p class="note">${o.dealNote&&o.dealNote!=="Recorded"?"Not recorded as a deal yet: "+esc(o.dealNote)+" Tell Claude in chat what was agreed.":"Not recorded as a deal yet. Tell Claude in chat what was agreed."}</p>`)):""}
     <div class="acts"><button class="btn small ghost" data-undo="${i}">Move back to open</button></div>`;
   const AX=o.kind==="bid"?ACT_BID:ACT;
   if(!o.action)return `<div class="acts">${Object.entries(AX).map(([k,a])=>`<button class="btn small ${k==="accept"?"primary":k==="decline"?"ghost":""}" data-oa="${i}|${k}">${a.label}</button>`).join("")}</div>
@@ -717,7 +717,7 @@ function pbPanel(){
     </div>
     ${optA.length?`<h3 style="margin:14px 0 6px">Optional extras <span class="muted" style="font-weight:500">· monthly add-ons on top of the core price; tick to include in this scenario</span></h3>
     <div class="scroll"><table class="tbl"><thead><tr><th></th><th>Article</th><th class="num">Price a month</th><th class="num">A year</th><th class="num">1st pos. sales</th><th class="num">Our comm.</th><th class="num">Clicks</th><th class="num">Their net</th></tr></thead><tbody>
-    ${optA.map(a=>{const e=S1(a),m=+PB.optPrice[a.name]||0,on=PB.opt.has(a.name),net=e.v-m*12-e.c;return `<tr class="${on?"pb-on":""}"><td><input type="checkbox" data-pbo="${esc(a.name)}" ${on?"checked":""} aria-label="Include ${esc(a.name)}"></td><td>${esc(a.name)} 1st</td><td class="num"><span class="mono">€</span><input type="number" min="0" data-pbop="${esc(a.name)}" value="${m}" style="width:70px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font:inherit"></td><td class="num mono">${eur(m*12)}</td><td class="num mono">${e.v?eur(e.v):'<span class="muted">€0</span>'} <span class="muted" style="font-size:.74rem">${e.n}</span></td><td class="num mono muted">${eur(e.c)}</td><td class="num mono muted">${a.clicks||0}</td><td class="num mono">${eurS(net)}</td></tr>`}).join("")}
+    ${optA.map(a=>{const e=S1(a),m=+PB.optPrice[a.name]||0,on=PB.opt.has(a.name),net=e.v-m*12-e.c;return `<tr class="${on?"pb-on":""}"><td><input type="checkbox" data-pbo="${esc(a.name)}" ${on?"checked":""} aria-label="Include ${esc(a.name)}"></td><td>${esc(a.name)} 1st</td><td class="num"><span class="mono">€</span><input type="number" min="0" data-pbop="${esc(a.name)}" value="${m}" style="width:70px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font:inherit"></td><td class="num mono">${eur(m*12)}</td><td class="num mono">${e.v?eur(e.v):'<span class="muted">€0</span>'} <span class="muted" style="font-size:.74rem">${e.n}</span></td><td class="num mono muted">${eur(e.c)}</td><td class="num mono muted">${a.clicks||0}${ast(a)}</td><td class="num mono">${eurS(net)}</td></tr>`}).join("")}
     </tbody></table></div>
     <p class="note">Prices here are what ${esc(p)} sees for each optional country when you share. 1st pos. sales is what the 1st position on that article sold in the last 12 months, whoever held it.</p>`:""}
     <div class="filters" style="margin:10px 0"><input type="search" id="pb-q" placeholder="Search an article" value="${esc(PB.q)}" aria-label="Search the builder"></div>
@@ -728,7 +728,7 @@ function pbPanel(){
         </tbody></table></div></div>
       <div><h3 style="margin:4px 0 6px">Could add <span class="muted" style="font-weight:500">· 1st position free by ${fmtD(win)}, best sellers first</span></h3>
         <div class="scroll ren-list"><table class="tbl"><thead><tr><th></th><th>Article</th><th class="num">List</th><th class="num">1st pos. sales</th><th class="num">Clicks</th><th>Free</th></tr></thead><tbody>
-        ${candRows.map(r=>`<tr class="${PB.add.has(r.a.name)?"pb-on":""}"><td><input type="checkbox" data-pba="${esc(r.a.name)}" ${PB.add.has(r.a.name)?"checked":""} aria-label="Add ${esc(r.a.name)}"></td><td>${esc(r.a.name)}${r.holder?` <span class="muted" style="font-size:.74rem">${esc(r.holder)}</span>`:""}</td><td class="num mono">${eur(lp(r.a))}</td><td class="num mono">${r.e.v?eur(r.e.v):'<span class="muted">€0</span>'} <span class="muted" style="font-size:.74rem">${r.e.n}</span></td><td class="num mono muted">${r.a.clicks||0}</td><td class="muted" style="white-space:nowrap">${r.free<=TODAY?"now":fmtD(r.free)}</td></tr>`).join("")||'<tr><td colspan="6" class="muted">Nothing free in that window.</td></tr>'}
+        ${candRows.map(r=>`<tr class="${PB.add.has(r.a.name)?"pb-on":""}"><td><input type="checkbox" data-pba="${esc(r.a.name)}" ${PB.add.has(r.a.name)?"checked":""} aria-label="Add ${esc(r.a.name)}"></td><td>${esc(r.a.name)}${r.holder?` <span class="muted" style="font-size:.74rem">${esc(r.holder)}</span>`:""}</td><td class="num mono">${eur(lp(r.a))}</td><td class="num mono">${r.e.v?eur(r.e.v):'<span class="muted">€0</span>'} <span class="muted" style="font-size:.74rem">${r.e.n}</span></td><td class="num mono muted">${r.a.clicks||0}${ast(r.a)}</td><td class="muted" style="white-space:nowrap">${r.free<=TODAY?"now":fmtD(r.free)}</td></tr>`).join("")||'<tr><td colspan="6" class="muted">Nothing free in that window.</td></tr>'}
         </tbody></table></div></div>
     </div>
     ${dropped.length||added.length?`<p class="note"><b>Dropping:</b> ${dropped.map(a=>esc(a.name)).join(", ")||"none"}. <b>Adding:</b> ${added.map(x=>esc(x.a.name)).join(", ")||"none"}.</p>`:""}`;
@@ -744,7 +744,7 @@ function teamPanels(){
   const provs=Object.keys(byP).sort((x,y)=>byP[y].length-byP[x].length);
   const how=`<section class="panel internal"><div class="phead"><h2 class="dup">How this works<span class="tag-internal">Admin only</span></h2></div>
     <ol class="how">
-      <li><b>One master record</b><span>Who holds which slot, until when and at what price lives here. Record every deal with Record a deal or Mark as agreed, and hold slots while you negotiate. Before telling a provider what's open, check here. Notion is a copy refreshed every morning, so don't edit it there. Prices and rules are edited under Prices and rules.</span></li>
+      <li><b>One master record</b><span>Who holds which slot, until when and at what price lives here. Accepting an offer records the deal by itself. For anything agreed by email or call (a renewal, a new deal, a hold while you negotiate, an ending), tell Claude in chat and it records it. Before telling a provider what's open, check here. Notion is a copy refreshed every morning, so don't edit it there. Prices and rules are edited under Prices and rules.</span></li>
       <li><b>Sign in by email</b><span>Give someone access with their name, email and role. Partners sign in at partners.nomadwise.io and see open slots, prices and their own placements, never other providers' names, prices or per-article numbers.</span></li>
       <li><b>They pick and offer</b><span>Providers tick slots and add-ons, see the list total, and send one package offer. No auction, no automatic replies.</span></li>
       <li><b>We decide</b><span>Offers land in the inbox here. Accept, counter or decline drafts a reply. Nothing is sent until one of us approves it, and approving opens it in your email app. We aim to reply within 2 working days.</span></li>
@@ -890,7 +890,7 @@ function teamPanels(){
     ${order.filter(n=>cg[n]).map(n=>`<tr><td><b>${esc(n)}</b></td><td class="mono">${cnt[n]}</td><td class="mono">${eur(cg[n][1])}</td><td class="mono">${eur(cg[n][2])}</td><td class="mono">${eur(cg[n][1]+cg[n][2])}</td></tr>`).join("")}
     <tr><td><b>Open now</b></td><td></td><td class="mono">${eur(openT[1])}</td><td class="mono">${eur(openT[2])}</td><td class="mono">${eur(openT[1]+openT[2])}</td></tr></tbody></table></div>
     <p class="note">Contract deals are priced separately, so actual revenue on those slots differs from list.</p></section>`;
-  return `<p class="note" style="margin-top:-8px">Offers, deals and renewals need us. Everything else is folded away below.</p>`+inbox+dealsPanel()+ren+fold("d-pb","Proposal builder",pbPanel())+fold("d-act",activityTitle(),activityPanel())+(TEAM_EV.length?fold("d-team","Team activity <span class=\"muted\" style=\"font-weight:500;font-size:.9rem\">· only you see this</span>",`<section class="panel"><div class="queue">${teamActivityPanel()}</div></section>`):"")+fold("d-how","How this works",how)+fold("d-num","Inventory and capacity",kpi+cap)+fold("d-pr","Prices and rules",prices)+fold("d-acc","Who has access",acc);
+  return `<p class="note" style="margin-top:-8px">Offers and renewals need us. To record a deal, a renewal, a hold or an ending, tell Claude in chat. Everything else is folded away below.</p>`+inbox+ren+fold("d-pb","Proposal builder",pbPanel())+fold("d-act",activityTitle(),activityPanel())+(TEAM_EV.length?fold("d-team","Team activity <span class=\"muted\" style=\"font-weight:500;font-size:.9rem\">· only you see this</span>",`<section class="panel"><div class="queue">${teamActivityPanel()}</div></section>`):"")+fold("d-how","How this works",how)+fold("d-num","Inventory and capacity",kpi+cap)+fold("d-pr","Prices and rules",prices)+fold("d-acc","Who has access",acc);
 }
 
 
@@ -1009,7 +1009,7 @@ function inventoryPanel(v){
   const tiers=`<div class="tiers">${S.tiers.map(t=>`<div class="tier"><span class="n">${esc(t.name)}</span><span class="r">${esc(t.desc)}</span><div class="pp"><span class="pc"><span class="pl">1st</span><span class="pv">${eur(t.p1)}</span></span><span class="pc"><span class="pl">2nd</span><span class="pv">${eur(t.p2)}</span></span></div></div>`).join("")}</div>`;
   const regs=REGION_ORDER.filter(r=>ARTS.some(a=>regionOf[a.name]===r));
   return `<section class="panel"><div class="phead"><h2>${team?"All placements":"Available placements"}</h2><span class="muted">12-month term · prices per year</span></div>
-    ${team?`<details class="howto"><summary>How these figures work</summary><p class="note">Views and clicks to eSIM providers over the last 12 months, measured on nomadwise.io. Click rate is clicks per page view. Sales are the last 12 months${SALES_FROM?" (from "+fmtD(new Date(SALES_FROM+"T00:00:00"))+")":""} from the sales feed: the number of sales and, in brackets, what customers paid the brand. Each brand counts towards the position it held: the current holder, or a brand that held 1st or 2nd earlier in the year (from the July positioning sheet and the May and August swaps). 3rd is the brand mentioned further down. “Not placed” is a brand we have no record of in 1st or 2nd on that article. Hover a figure to see the brands and our commission. Admin only: providers see the tier, not these figures. Tap an article name for sales by brand and to change its group.</p></details>`:""}
+    ${team?`<details class="howto"><summary>How these figures work</summary><p class="note">Views and clicks to eSIM providers over the last 12 months, measured on nomadwise.io. Click rate is clicks per page view. An asterisk (*) means the article is under 12 months old, so its figures only cover the months since it went live (hover it for how many). Sales are the last 12 months${SALES_FROM?" (from "+fmtD(new Date(SALES_FROM+"T00:00:00"))+")":""} from the sales feed: the number of sales and, in brackets, what customers paid the brand. Each brand counts towards the position it held: the current holder, or a brand that held 1st or 2nd earlier in the year (from the July positioning sheet and the May and August swaps). 3rd is the brand mentioned further down. “Not placed” is a brand we have no record of in 1st or 2nd on that article. Hover a figure to see the brands and our commission. Admin only: providers see the tier, not these figures. Tap an article name for sales by brand and to change its group.</p></details>`:""}
     <div class="legend" aria-label="Key">${(team?[["available","Open"],["held","Held"],["reserved","In renewal or reserved"]]:filt.all?[["available","Available"],["selected","Selected"],["mine","Yours"],["bid","Offers open"],["reserved","Reserved or in renewal"],["taken","Unavailable"]]:[["available","Available"],["selected","Selected"],["mine","Yours"],["bid","Offers open"]]).map(([c,l])=>`<span class="key ${c}">${l}</span>`).join("")}</div>
     ${!team&&MYREGIONS?`<p class="regnote">You're seeing our ${esc(regList(MYREGIONS))} guides. If you'd like to see other regions too, just ask us.</p>`:""}
     <div class="filters"><input type="search" id="f-q" placeholder="Search a country or city" value="${esc(filt.q)}" aria-label="Search articles">
@@ -1106,10 +1106,8 @@ function plBind(){
 }
 
 // ---------- one master record: deals, holds, checks (admin only) ----------
-let DEALS=[], HOLDL=[], HOLDS={}, CHECKS=[], DF=null, HF=null, DEND=null, HREL=null, CKOPEN=false, CKINV={};
-const DTYPES=["Paid exclusive","Ubigi monthly contract"];
+let DEALS=[], HOLDL=[], HOLDS={}, CHECKS=[], CKOPEN=false, CKINV={};
 const plOf=p=>+p===1?"1st":"2nd";
-const addYear=s=>{const d=D(s);const y=new Date(d);y.setFullYear(d.getFullYear()+1);return isoD(y)};
 const dmy=s=>s?fmtD(D(String(s).slice(0,10))):"";
 function setHolds(list){HOLDL=list||[];HOLDS={};HOLDL.forEach(h=>{HOLDS[h.a+"|"+h.pos]=h})}
 // Who holds a slot during a negotiation (team: from the hold list; partners: from their page data)
@@ -1117,140 +1115,22 @@ function holdOf(a,s){
   if(s.hold)return s.hold==="mine"?{mine:true,until:s.holdTo}:{who:"other",until:s.holdTo};
   if(ROLE!=="team"||PREVIEW)return null;
   const h=HOLDS[a.name+"|"+s.pos];return h?{who:h.p,until:h.until,note:h.note,id:h.id}:null}
-// What the team sees about a slot right now, in one short line (used by the deal and hold forms)
-function slotNow(name,pos){const a=ARTS.find(x=>x.name===name);if(!a)return {t:"Not one of our guides",bad:true};
-  const s=a.slots[pos-1],h=HOLDS[name+"|"+pos];
-  if(s.flag==="E")return {t:s.prov+" · ongoing deal",bad:true,prov:s.prov};
-  if(s.prov&&s.exp){const d=days(D(s.exp),TODAY);
-    if(d>=0)return {t:s.prov+" to "+fmtD(D(s.exp)),bad:true,prov:s.prov};
-    if(d>=-60){const x=D(s.exp);x.setDate(x.getDate()+60);return {t:"In renewal for "+s.prov+" to "+fmtD(x),warn:true,prov:s.prov}}}
-  if(h)return {t:"Held for "+h.p+" to "+dmy(h.until),hold:h};
-  return {t:"Open"+(pos===1&&frActive(a,s)?" · "+frActive(a,s)+" first refusal":(pos===1?" · Ubigi gets first say":"")),open:true}}
-
-// ----- Record a deal -----
-function dfNew(o){const t=isoD(TODAY);return Object.assign({provider:"",newCo:"",type:"Paid exclusive",start:t,end:addYear(t),invoice:"",invOn:t,note:"",items:[],offer:null,addName:"",addPos:1,err:"",busy:false},o||{})}
-function dfAdd(names,pos){const added=[],skipped=[];
-  names.forEach(n0=>{const a=ARTS.find(x=>x.name.toLowerCase()===n0.trim().toLowerCase());if(!a){if(n0.trim())skipped.push(n0.trim());return}
-    famOf(a.name).forEach(n=>{if(DF.items.some(x=>x.article===n&&x.pos===pos))return;const ar=ARTS.find(x=>x.name===n);if(!ar)return;
-      DF.items.push({article:n,pos,price:priceOf(ar,pos),list:priceOf(ar,pos)});added.push(n)})});
-  if(skipped.length)toast("Not one of our guides: "+skipped.join(", "));
-  else if(added.length>1&&names.length===1)toast(added.join(", ")+" go together, so all "+added.length+" were added");}
-function dfFromOffer(o){const items=[],skip=[];let listT=0;
-  o.items.forEach(it=>{const m=String(it).match(/^(.*?) · (1st|2nd)(?: · to (\d{4}-\d{2}-\d{2}))?$/);const a=m&&ARTS.find(x=>x.name===m[1]);
-    if(!a){skip.push(String(it));return}const pos=m[2]==="1st"?1:2,lp=m[3]?proRata(a,pos,D(m[3])):priceOf(a,pos);listT+=lp;items.push({article:a.name,pos,list:lp,until:m[3]||null})});
-  const f=listT?o.offer/listT:1;items.forEach(x=>{x.price=Math.round(x.list*f);if(x.until)x.end=x.until});
-  DF=dfNew({provider:o.from,items,offer:o.id,note:"From "+o.from+"'s offer of "+eur(o.offer)+" on "+o.when});
-  if(skip.length)DF.skipNote=skip.join(", ")+(skip.length===1?" isn't a placement, so it isn't":" aren't placements, so they aren't")+" recorded here."}
-function dfEnd(x){return x.end||DF.end}
-function dealForm(){const F=DF,provs=PROVIDERS.map(p=>p.name);const pv=F.provider==="__new"?F.newCo.trim():F.provider;
-  const tot=F.items.reduce((t,x)=>t+(+x.price||0),0);
-  const warn=[],bad=[],fr=[];F.items.forEach(x=>{const n=slotNow(x.article,x.pos);
-    if(n.bad&&n.prov!==pv)bad.push(x.article+" "+plOf(x.pos)+": "+n.t);
-    else if(n.hold&&n.hold.p!==pv)bad.push(x.article+" "+plOf(x.pos)+": "+n.t);
-    else if(n.warn&&n.prov!==pv)warn.push(x.article+" "+plOf(x.pos)+": "+n.t+". Only go ahead if they've said no.");
-    if(x.pos===1&&n.open&&pv&&pv!=="Ubigi"&&ARTS.some(a=>a.slots[0].prov==="Ubigi"&&holdsNow(a.slots[0])))fr.push(x.article)});
-  if(fr.length)warn.push("Ubigi gets first say on open 1st positions ("+fr.slice(0,8).join(", ")+(fr.length>8?" and "+(fr.length-8)+" more":"")+"). Check they've had the chance.");
-  const uniqW=[...new Set(warn)];
-  const c=S.contracts.Ubigi,cList=c?[...new Set((c.edit&&c.edit.on?(c.edit.keep||[]).concat(c.edit.add||[]):(c.exclusive||[])))]:[];
-  const label=`Record ${F.items.length} ${F.items.length===1?"placement":"placements"}${pv?" for "+esc(pv):""}`;
-  return `<div class="dl-form" id="df">
-    <div class="dl-step"><span class="dl-n">Step 1 of 3</span><h3>Who and which guides</h3>
-      <div class="dl-row"><label class="fl">Partner company<select id="df-prov"><option value="" ${F.provider?"":"selected"} disabled>Pick the partner</option>${provs.map(p=>`<option ${F.provider===p?"selected":""}>${esc(p)}</option>`).join("")}<option value="__new" ${F.provider==="__new"?"selected":""}>New partner company…</option></select></label>
-        ${F.provider==="__new"?`<label class="fl">Company name<input id="df-newco" value="${esc(F.newCo)}" placeholder="e.g. Airalo"></label>`:""}</div>
-      <div class="dl-add"><label class="fl">Add guides<input id="df-add" list="int-arts" value="${esc(F.addName)}" placeholder="Type a guide, or paste several separated by commas"></label>
-        <label class="fl">Position<select id="df-pos"><option value="1" ${F.addPos===1?"selected":""}>1st</option><option value="2" ${F.addPos===2?"selected":""}>2nd</option></select></label>
-        <button class="btn" type="button" id="df-addb">Add</button></div>
-      ${F.type==="Ubigi monthly contract"&&cList.length?`<button class="lnk" type="button" id="df-ubigi">Add the ${cList.length} guides in Ubigi's contract proposal, 1st</button>`:""}
-      <p class="note">A country and its cities go together, so adding one adds the rest of its family.</p>
-      ${F.items.length?`<div class="scroll"><table class="tbl dl-tbl"><thead><tr><th>Guide</th><th>Position</th><th>Now</th><th class="num">Price €</th><th>Ends</th><th></th></tr></thead><tbody>
-        ${F.items.map((x,i)=>{const n=slotNow(x.article,x.pos);const cls=(n.bad||n.hold)&&n.prov!==pv&&!(n.hold&&n.hold.p===pv)?"bad":(n.warn&&n.prov!==pv?"warn":"");
-          return `<tr><td><b>${esc(x.article)}</b></td><td>${plOf(x.pos)}</td><td class="dl-now ${cls}">${esc(n.t)}</td>
-          <td class="num"><input type="number" min="0" step="1" data-dfp="${i}" value="${x.price}" aria-label="Price for ${esc(x.article)}"></td>
-          <td><input type="date" data-dfe="${i}" value="${esc(dfEnd(x))}" aria-label="End date for ${esc(x.article)}"></td>
-          <td><button class="x" type="button" data-dfx="${i}" aria-label="Remove ${esc(x.article)}">×</button></td></tr>`}).join("")}
-        </tbody><tfoot><tr><td colspan="3"><b>Total</b></td><td class="num mono"><b>${eur(tot)}</b></td><td colspan="2"></td></tr></tfoot></table></div>`:`<p class="muted" style="font-size:.9rem">No guides yet.</p>`}
-      ${F.skipNote?`<p class="note">${esc(F.skipNote)}</p>`:""}</div>
-    <div class="dl-step"><span class="dl-n">Step 2 of 3</span><h3>Dates, price and invoice</h3>
-      <div class="dl-row"><label class="fl">Deal type<select id="df-type">${DTYPES.map(t=>`<option ${F.type===t?"selected":""}>${t}</option>`).join("")}</select></label>
-        <label class="fl">Starts<input type="date" id="df-start" value="${esc(F.start)}"></label>
-        <label class="fl">Ends<input type="date" id="df-end" value="${esc(F.end)}"></label></div>
-      <p class="note">Ends defaults to 12 months after the start and applies to every guide unless you change one in the table. Prices are per guide for the whole term.</p>
-      <div class="dl-row"><label class="fl"><span>Invoice number <span class="muted">(optional for now)</span></span><input id="df-inv" value="${esc(F.invoice)}" placeholder="e.g. #41"></label>
-        <label class="fl">Invoice date<input type="date" id="df-invon" value="${esc(F.invOn)}"></label></div>
-      <label class="fl"><span>Note <span class="muted">(optional)</span></span><input id="df-note" value="${esc(F.note)}" placeholder="e.g. agreed by email with Simon"></label></div>
-    <div class="dl-step"><span class="dl-n">Step 3 of 3</span><h3>Check and record</h3>
-      ${F.items.length&&pv?`<p><b>${F.items.length} ${F.items.length===1?"placement":"placements"} for ${esc(pv)}</b>, ${eur(tot)} in total, ${esc(F.type.toLowerCase())}, from ${dmy(F.start)}.</p>`:`<p class="muted">Pick the partner and add at least one guide.</p>`}
-      ${bad.length?`<div class="dl-msg bad"><b>These can't be recorded yet:</b><ul>${bad.map(t=>`<li>${esc(t)}</li>`).join("")}</ul></div>`:""}
-      ${uniqW.length?`<div class="dl-msg warn"><ul>${uniqW.slice(0,6).map(t=>`<li>${esc(t)}</li>`).join("")}</ul></div>`:""}
-      ${!F.invoice.trim()&&F.type==="Paid exclusive"&&F.items.length?`<p class="note">No invoice number yet: these show under Needs checking as "no invoice found" until you add it.</p>`:""}
-      ${F.err?`<div class="dl-msg bad">${esc(F.err)}</div>`:""}
-      <p class="note">Saves straight away. These slots then show as taken to every other partner, and Notion copies it the next morning. Nothing is emailed.</p>
-      <div class="acts"><button class="btn primary" type="button" id="df-go" ${F.items.length&&pv&&!F.busy&&!bad.length?"":"disabled"}>${F.busy?"Recording…":(bad.length?"Sort out the guides above first":label)}</button><button class="btn ghost" type="button" id="df-cancel">Cancel</button></div></div></div>`}
-async function dfSubmit(){const F=DF;const pv=F.provider==="__new"?F.newCo.trim():F.provider;
-  if(!pv){F.err="Pick the partner company.";render();return}
-  F.busy=true;F.err="";render();
-  const items=F.items.map(x=>({article:x.article,pos:x.pos,start:F.start,end:dfEnd(x),price:x.price===""?null:+x.price,list:x.list}));
-  const {data,error}=await sb.rpc("partners_team_deal",{p_session:SESSION,p_deal:{provider:pv,deal_type:F.type,invoice:F.invoice,invoiced_on:F.invOn,offer_id:F.offer,note:F.note,items}});
-  F.busy=false;
-  if(error){F.err=error.message;render();const m=document.querySelector(".dl-msg.bad");if(m)m.scrollIntoView({behavior:"smooth",block:"center"});return}
-  toast("Recorded "+data.recorded+" "+(data.recorded===1?"placement":"placements")+" for "+pv);DF=null;reloadTeam()}
-
-// ----- Hold a slot -----
-function hfNew(o){const d=new Date(TODAY);d.setDate(d.getDate()+7);return Object.assign({provider:"",article:"",pos:1,until:isoD(d),note:"",err:"",busy:false},o||{})}
-function holdForm(){const F=HF;const a=ARTS.find(x=>x.name.toLowerCase()===F.article.trim().toLowerCase());const fam=a?famOf(a.name):[];
-  const n=a?slotNow(a.name,F.pos):null;const mx=new Date(TODAY);mx.setDate(mx.getDate()+60);
-  return `<div class="dl-form" id="hf">
-    <div class="dl-step"><span class="dl-n">Step 1 of 2</span><h3>What to hold, and for whom</h3>
-      <div class="dl-row"><label class="fl">Partner company<select id="hf-prov"><option value="" ${F.provider?"":"selected"} disabled>Pick the partner</option>${PROVIDERS.map(p=>`<option ${F.provider===p.name?"selected":""}>${esc(p.name)}</option>`).join("")}</select></label>
-        <label class="fl">Guide<input id="hf-art" list="int-arts" value="${esc(F.article)}" placeholder="e.g. Japan"></label>
-        <label class="fl">Position<select id="hf-pos"><option value="1" ${F.pos===1?"selected":""}>1st</option><option value="2" ${F.pos===2?"selected":""}>2nd</option></select></label></div>
-      ${a?`<p class="note">Now: ${esc(n.t)}.${fam.length>1?" "+esc(fam.join(", "))+" go together, so all "+fam.length+" are held.":""}</p>`:""}</div>
-    <div class="dl-step"><span class="dl-n">Step 2 of 2</span><h3>Until when</h3>
-      <div class="dl-row"><label class="fl">Hold until<input type="date" id="hf-until" value="${esc(F.until)}" min="${isoD(TODAY)}" max="${isoD(mx)}"></label>
-        <label class="fl"><span>Note <span class="muted">(optional)</span></span><input id="hf-note" value="${esc(F.note)}" placeholder="e.g. waiting for their budget sign-off"></label></div>
-      ${F.err?`<div class="dl-msg bad">${esc(F.err)}</div>`:""}
-      <p class="note">Other partners see it as taken until then, without seeing who. It lapses by itself on that date, up to 60 days ahead. Nothing is emailed.</p>
-      <div class="acts"><button class="btn primary" type="button" id="hf-go" ${a&&F.provider&&!F.busy?"":"disabled"}>${F.busy?"Holding…":`Hold ${a?esc(a.name)+" "+plOf(F.pos):"the slot"}${F.provider?" for "+esc(F.provider):""} until ${dmy(F.until)}`}</button><button class="btn ghost" type="button" id="hf-cancel">Cancel</button></div></div></div>`}
-
-// ----- End early or correct a mistake -----
-function endPanel(d){const E=DEND;const pl=plOf(d.pos);
-  return `<div class="dl-end"><div role="radiogroup" aria-label="What happened" class="dl-choice">
-      <label class="chk"><input type="radio" name="de-how" value="early" ${E.how==="early"?"checked":""}> <span><b>End it now and open the slot</b><br><span class="note">For a partner stopping early. The slot opens to every partner straight away. The deal stays in the history.</span></span></label>
-      <label class="chk"><input type="radio" name="de-how" value="mistake" ${E.how==="mistake"?"checked":""}> <span><b>Correct a mistake</b><br><span class="note">For a deal recorded by mistake. The slot goes back to how it was before. The deal stays in the history, marked as a mistake${d.inv?", and its invoice line is removed":""}.</span></span></label></div>
-    <label class="fl"><span>Why <span class="muted">(optional)</span></span><input id="de-why" value="${esc(E.why||"")}" placeholder="e.g. wrong partner picked"></label>
-    ${E.err?`<div class="dl-msg bad">${esc(E.err)}</div>`:""}
-    <div class="acts"><button class="btn primary" type="button" id="de-go" ${E.how?"":"disabled"}>${E.how==="mistake"?`Undo the deal on ${esc(d.a)} ${pl}`:(E.how==="early"?`End ${esc(d.a)} ${pl} for ${esc(d.p)} now`:"Pick one above")}</button><button class="btn ghost" type="button" id="de-cancel">Cancel</button></div></div>`}
-function dealLine(d,withEnd){const ended=d.endedAt;const open=DEND&&DEND.id===d.id;
+// ----- Deals are recorded by chat or by accepting an offer; the portal only shows them -----
+function dealLine(d){const ended=d.endedAt;
   return `<li class="dl-li${ended?" ended":""}"><div class="dl-li-h"><span><b>${esc(d.a)} ${plOf(d.pos)}</b> · ${esc(d.p)} <span class="muted">${dmy(d.start)} to ${dmy(d.end)}${d.price!=null?" · "+eur(d.price):""}${d.inv?" · invoice "+esc(d.inv):""}${d.type!=="Paid exclusive"?" · "+esc(d.type):""}</span></span>
-    ${ended?`<span class="pill ${d.how==="mistake"?"due":"soon"}">${d.how==="mistake"?"Corrected":"Ended early"} ${dmy(d.endedAt)}</span>`:(withEnd?`<button class="btn small ghost" data-dend="${esc(d.id)}">${open?"Close":"End or correct"}</button>`:"")}</div>
-    <div class="note">${d.src==="backfill"?"Loaded from the existing list on "+dmy(d.at):"Recorded by "+esc(d.by||"")+" on "+dmy(d.at)}${d.note&&d.src!=="backfill"?" · "+esc(d.note):""}${ended&&d.why?" · "+esc(d.why):""}</div>
-    ${open?endPanel(d):""}</li>`}
-function dealsPanel(){
-  const recent=DEALS.filter(d=>d.src!=="backfill"&&(!d.endedAt||days(TODAY,new Date(d.endedAt))<=30)).slice(0,25);
-  return `<section class="panel internal" id="deals"><div class="phead"><div><h2>Deals and holds<span class="tag-internal">Admin only</span></h2>
-      <p class="note" style="margin:4px 0 0;max-width:640px">This page is the record of who holds what. Before telling a provider what's open, check here. Record every deal agreed by email or call, and hold slots while you negotiate. Notion copies it every morning.</p></div>
-      <div class="acts"><button class="btn ${DF?"ghost":"primary"}" id="dl-new">${DF?"Close":"+ Record a deal"}</button><button class="btn ${HF?"ghost":""}" id="hl-new">${HF?"Close":"Hold a slot"}</button></div></div>
-    ${DF?dealForm():""}${HF?holdForm():""}
-    <div class="dl-cols"><div><h3 class="acc-h">Held while we negotiate · ${HOLDL.length}</h3>
-      ${HOLDL.length?`<ul class="dl-list">${HOLDL.map(h=>`<li class="dl-li"><div class="dl-li-h"><span><b>${esc(h.a)} ${plOf(h.pos)}</b> · held for ${esc(h.p)} <span class="muted">to ${dmy(h.until)}${h.note?" · "+esc(h.note):""}</span></span>
-        ${HREL===h.id?`<span class="acts"><button class="btn small primary" data-hrelgo="${esc(h.id)}">Release hold</button><button class="btn small ghost" data-hrel="">Keep it</button></span>`:`<button class="btn small ghost" data-hrel="${esc(h.id)}">Release</button>`}</div>
-        ${HREL===h.id?`<div class="note">Release the hold on ${esc(h.a)} ${plOf(h.pos)} for ${esc(h.p)}? It shows as open to every partner straight away.</div>`:""}</li>`).join("")}</ul>`:`<p class="muted" style="font-size:.9rem">Nothing held.</p>`}</div>
-      <div><h3 class="acc-h">Recorded recently · ${recent.length}</h3>
-      ${recent.length?`<ul class="dl-list">${recent.map(d=>dealLine(d,true)).join("")}</ul>`:`<p class="muted" style="font-size:.9rem">No deals recorded here yet. Every slot that was already paid has been loaded from the existing list; tap a guide name below to see its deals.</p>`}</div></div></section>`}
+    ${ended?`<span class="pill ${d.how==="mistake"?"due":"soon"}">${d.how==="mistake"?"Undone":"Ended early"} ${dmy(d.endedAt)}</span>`:""}</div>
+    <div class="note">${d.src==="backfill"?"Loaded from the existing list on "+dmy(d.at):"Recorded by "+esc(d.by||"")+" on "+dmy(d.at)}${d.note&&d.src!=="backfill"?" · "+esc(d.note):""}${ended&&d.why?" · "+esc(d.why):""}</div></li>`}
 // Under an expanded guide row: its deals and holds, with the actions
 function rowDeals(a){const L=DEALS.filter(d=>d.a===a.name).slice(0,8);
-  const acts=[1,2].map(pos=>{const n=slotNow(a.name,pos);
-    return n.open?`<button class="btn small" data-hold1="${esc(a.name)}|${pos}">Hold ${plOf(pos)}</button><button class="btn small" data-deal1="${esc(a.name)}|${pos}">Record a deal for ${plOf(pos)}</button>`:""}).join("");
   return `<div class="rd-col rd-deals"><span class="eyebrow">Deals on this guide</span>
-    ${L.length?`<ul class="dl-list">${L.map(d=>dealLine(d,true)).join("")}</ul>`:'<div class="muted">None recorded</div>'}
-    ${acts?`<div class="acts">${acts}</div>`:""}</div>`}
+    ${L.length?`<ul class="dl-list">${L.map(d=>dealLine(d)).join("")}</ul>`:'<div class="muted">None recorded</div>'}
+    <div class="note">To change one, tell Claude in chat.</div></div>`}
 
 // ----- Needs checking (rail) -----
 function checksPanel(){const open=CHECKS.filter(c=>!c.ok),done=CHECKS.filter(c=>c.ok);
   const item=c=>`<li class="ck"><div class="ck-t">${esc(c.title)}</div><div class="note">${esc(c.fix)}</div>
     ${c.kind==="noinv"&&c.deal?`<div class="ck-inv"><input id="ckinv-${esc(c.deal)}" value="${esc(CKINV[c.deal]||"")}" placeholder="Invoice number" aria-label="Invoice number for ${esc(c.article)}"><button class="btn small" data-ckinv="${esc(c.deal)}">Add invoice</button></div>`:""}
-    <div class="acts">${(c.kind==="invslot"||c.kind==="changed")&&c.article&&c.pos?`<button class="btn small" data-ckdeal="${esc(c.article)}|${c.pos}|${esc(c.provider||"")}">Record a deal</button>`:""}
-      <button class="btn small ghost" data-ckok="${esc(c.key)}">Mark as checked</button></div></li>`;
+    <div class="acts"><button class="btn small ghost" data-ckok="${esc(c.key)}">Mark as checked</button></div></li>`;
   return `<section class="panel internal ckp"><div class="phead"><h3>Needs checking <span class="${open.length?"pl-badge":"muted"}">${open.length}</span></h3></div>
     ${open.length?`<ul class="ck-list">${open.slice(0,CKOPEN?200:6).map(item).join("")}</ul>${open.length>6?`<button class="lnk" id="ck-more">${CKOPEN?"Show fewer":"Show all "+open.length}</button>`:""}`:`<p class="note">Nothing to check. Paid slots, invoices and the live pages agree.</p>`}
     ${done.length?`<details id="ck-done" ${openD.has("ck-done")?"open":""}><summary class="note" style="cursor:pointer">Checked · ${done.length}</summary><ul class="ck-list">${done.map(c=>`<li class="ck ok"><div class="ck-t">${esc(c.title)}</div><div class="note">Checked by ${esc(c.okBy||"")} ${dmy(c.okAt)}${c.okNote?" · "+esc(c.okNote):""}</div><div class="acts"><button class="btn small ghost" data-ckundo="${esc(c.key)}">Undo</button></div></li>`).join("")}</ul></details>`:""}
@@ -1258,57 +1138,6 @@ function checksPanel(){const open=CHECKS.filter(c=>!c.ok),done=CHECKS.filter(c=>
 
 function mrBind(){
   const on=(id,ev,fn)=>{const e=$(id);if(e)e.addEventListener(ev,fn)};
-  on("dl-new","click",()=>{DF=DF?null:dfNew();HF=null;render();if(DF)$("df").scrollIntoView({behavior:"smooth",block:"start"})});
-  on("hl-new","click",()=>{HF=HF?null:hfNew();DF=null;render();if(HF)$("hf").scrollIntoView({behavior:"smooth",block:"start"})});
-  if(DF){
-    on("df-prov","change",e=>{DF.provider=e.target.value;render()});
-    on("df-newco","input",e=>{DF.newCo=e.target.value});on("df-newco","change",()=>render());
-    on("df-add","input",e=>{DF.addName=e.target.value});
-    on("df-add","keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("df-addb").click()}});
-    on("df-pos","change",e=>{DF.addPos=+e.target.value});
-    on("df-addb","click",()=>{const names=DF.addName.split(/[,;\n]/).map(s=>s.trim()).filter(Boolean);if(!names.length){toast("Type a guide name");return}
-      dfAdd(names,DF.addPos);DF.addName="";render();const i=$("df-add");if(i)i.focus()});
-    on("df-ubigi","click",()=>{const c=S.contracts.Ubigi;const L=[...new Set(c.edit&&c.edit.on?(c.edit.keep||[]).concat(c.edit.add||[]):(c.exclusive||[]))];
-      dfAdd(L,1);DF.items.forEach(x=>{if(x.pos===1&&L.includes(x.article))x.price=Math.round((+c.base||0)*12/L.length)});render()});
-    document.querySelectorAll("[data-dfp]").forEach(el=>el.addEventListener("change",()=>{DF.items[+el.dataset.dfp].price=el.value;render()}));
-    document.querySelectorAll("[data-dfe]").forEach(el=>el.addEventListener("change",()=>{DF.items[+el.dataset.dfe].end=el.value||null;render()}));
-    document.querySelectorAll("[data-dfx]").forEach(el=>el.addEventListener("click",()=>{DF.items.splice(+el.dataset.dfx,1);render()}));
-    on("df-type","change",e=>{DF.type=e.target.value;if(DF.type==="Ubigi monthly contract"&&!DF.provider)DF.provider="Ubigi";render()});
-    on("df-start","change",e=>{const was=DF.end===addYear(DF.start);DF.start=e.target.value;if(was&&DF.start)DF.end=addYear(DF.start);render()});
-    on("df-end","change",e=>{DF.end=e.target.value;render()});
-    on("df-inv","input",e=>{DF.invoice=e.target.value});on("df-inv","change",()=>render());
-    on("df-invon","change",e=>{DF.invOn=e.target.value});
-    on("df-note","input",e=>{DF.note=e.target.value});
-    on("df-go","click",dfSubmit);
-    on("df-cancel","click",()=>{DF=null;render()});
-  }
-  if(HF){
-    on("hf-prov","change",e=>{HF.provider=e.target.value;render()});
-    on("hf-art","change",e=>{HF.article=e.target.value;render()});
-    on("hf-pos","change",e=>{HF.pos=+e.target.value;render()});
-    on("hf-until","change",e=>{HF.until=e.target.value;render()});
-    on("hf-note","input",e=>{HF.note=e.target.value});
-    on("hf-cancel","click",()=>{HF=null;render()});
-    on("hf-go","click",async()=>{const a=ARTS.find(x=>x.name.toLowerCase()===HF.article.trim().toLowerCase());if(!a)return;HF.busy=true;HF.err="";render();
-      const {data,error}=await sb.rpc("partners_team_hold",{p_session:SESSION,p_id:null,p_row:{provider:HF.provider,article:a.name,pos:HF.pos,until:HF.until,note:HF.note}});
-      HF.busy=false;if(error){HF.err=error.message;render();return}
-      toast("Held "+data.held+" "+(data.held===1?"slot":"slots")+" for "+HF.provider+" until "+dmy(HF.until));HF=null;reloadTeam()});
-  }
-  document.querySelectorAll("[data-hrel]").forEach(el=>el.addEventListener("click",()=>{HREL=el.dataset.hrel||null;render()}));
-  document.querySelectorAll("[data-hrelgo]").forEach(el=>el.addEventListener("click",async()=>{
-    const {error}=await sb.rpc("partners_team_hold",{p_session:SESSION,p_id:el.dataset.hrelgo,p_row:{why:"Released"}});
-    if(error){toast("Couldn't release: "+error.message);return}HREL=null;toast("Hold released");reloadTeam()}));
-  document.querySelectorAll("[data-dend]").forEach(el=>el.addEventListener("click",()=>{DEND=DEND&&DEND.id===el.dataset.dend?null:{id:el.dataset.dend,how:"",why:""};render()}));
-  if(DEND){
-    document.querySelectorAll("input[name=de-how]").forEach(el=>el.addEventListener("change",()=>{DEND.how=el.value;const w=$("de-why");if(w)DEND.why=w.value;render()}));
-    on("de-why","input",e=>{DEND.why=e.target.value});
-    on("de-cancel","click",()=>{DEND=null;render()});
-    on("de-go","click",async()=>{if(!DEND.how)return;const {error}=await sb.rpc("partners_team_deal_end",{p_session:SESSION,p_id:DEND.id,p_how:DEND.how,p_reason:DEND.why||""});
-      if(error){DEND.err=error.message;render();return}toast(DEND.how==="mistake"?"Deal undone. The slot is back to how it was.":"Ended. The slot is open now.");DEND=null;reloadTeam()});
-  }
-  document.querySelectorAll("[data-hold1]").forEach(el=>el.addEventListener("click",()=>{const [n,p]=el.dataset.hold1.split("|");HF=hfNew({article:n,pos:+p});DF=null;TVIEW="place";render();const f=$("hf");if(f)f.scrollIntoView({behavior:"smooth",block:"start"})}));
-  document.querySelectorAll("[data-deal1]").forEach(el=>el.addEventListener("click",()=>{const [n,p]=el.dataset.deal1.split("|");DF=dfNew();dfAdd([n],+p);HF=null;render();const f=$("df");if(f)f.scrollIntoView({behavior:"smooth",block:"start"})}));
-  document.querySelectorAll("[data-agree]").forEach(el=>el.addEventListener("click",()=>{const o=offers.find(x=>x.id===el.dataset.agree);if(!o)return;dfFromOffer(o);HF=null;render();const f=$("df");if(f)f.scrollIntoView({behavior:"smooth",block:"start"})}));
   // checks
   on("ck-more","click",()=>{CKOPEN=!CKOPEN;render()});
   const cd=$("ck-done");if(cd)cd.addEventListener("toggle",()=>{if(cd.open)openD.add("ck-done");else openD.delete("ck-done")});
@@ -1322,8 +1151,6 @@ function mrBind(){
   document.querySelectorAll("[data-ckinv]").forEach(el=>el.addEventListener("click",async()=>{const id=el.dataset.ckinv,v=(CKINV[id]||"").trim();if(!v){toast("Type the invoice number");return}
     const {error}=await sb.rpc("partners_team_deal_invoice",{p_session:SESSION,p_id:id,p_invoice:v,p_on:isoD(TODAY)});if(error){toast(error.message);return}
     delete CKINV[id];toast("Invoice "+v+" added");reloadTeam()}));
-  document.querySelectorAll("[data-ckdeal]").forEach(el=>el.addEventListener("click",()=>{const [n,p,pv]=el.dataset.ckdeal.split("|");
-    DF=dfNew({provider:PROVIDERS.some(x=>x.name===pv)?pv:""});dfAdd([n],+p);HF=null;TVIEW="place";render();const f=$("df");if(f)f.scrollIntoView({behavior:"smooth",block:"start"})}));
 }
 
 // ---------- Ask me anything (team only) ----------
@@ -1515,7 +1342,7 @@ function glanceModal(){if(!GLANCE)return "";const k=GLANCE;
     const L=ARTS.map(a=>({a,s:a.slots[pos-1],st:status(a,a.slots[pos-1],null)})).filter(x=>x.st.k==="available").map(x=>({...x,v:+((x.a.sales||{})["v"+pos])||0,n:+((x.a.sales||{})["s"+pos])||0,fr:frActive(x.a,x.s)}));
     L.sort((x,y)=>y.v-x.v||y.a.clicks-x.a.clicks);
     title=L.length+" "+pl+" positions open";intro=`Free to book now, best sellers first. "Sales" is what the ${pl} position there sold in 12 months, whoever was showing, with the number of sales in brackets. "Converted" is sales ÷ clicks: ${(()=>{const x=L.find(y=>y.n&&y.a.clicks);return x?`${esc(x.a.name)}'s ${x.n} sales from ${x.a.clicks} clicks is ${(x.n/x.a.clicks*100).toFixed(x.n/x.a.clicks<0.1?1:0)}%`:"sales divided by clicks"})()}. ${eur(L.reduce((t,x)=>t+priceOf(x.a,pos),0))} a year at list if all were sold.`;
-    body=`<ul>${L.slice(0,25).map(x=>`<li class="gr"><div class="gr-a"><b>${esc(x.a.name)}</b> <span class="tchip">${esc(grp(x.a).name)}</span>${trendChip(x.a)}${x.fr?` <span class="pill fr">${esc(x.fr)} first refusal</span>`:""}</div><div class="gr-m"><span>${x.v?"sales <b>"+eur(x.v)+"</b> <span class=\"gsub\">("+x.n+")</span>":'<span class="muted">no sales tracked</span>'} <span class="muted">· ${x.a.clicks.toLocaleString("en-GB")} clicks${x.n&&x.a.clicks?` · <span title="${x.n} sales ÷ ${x.a.clicks} clicks">${(x.n/x.a.clicks*100).toFixed(x.n/x.a.clicks<0.1?1:0)}% converted</span>`:""}</span></span><span class="mono">${eur(priceOf(x.a,pos))}</span></div></li>`).join("")}</ul>${L.length>25?`<p class="muted" style="font-size:.86rem">And ${L.length-25} more with fewer sales. Use Show all in All placements to see them.</p>`:""}`;
+    body=`<ul>${L.slice(0,25).map(x=>`<li class="gr"><div class="gr-a"><b>${esc(x.a.name)}</b> <span class="tchip">${esc(grp(x.a).name)}</span>${trendChip(x.a)}${x.fr?` <span class="pill fr">${esc(x.fr)} first refusal</span>`:""}</div><div class="gr-m"><span>${x.v?"sales <b>"+eur(x.v)+"</b> <span class=\"gsub\">("+x.n+")</span>":'<span class="muted">no sales tracked</span>'} <span class="muted">· ${x.a.clicks.toLocaleString("en-GB")} clicks${ast(x.a)}${x.n&&x.a.clicks?` · <span title="${x.n} sales ÷ ${x.a.clicks} clicks">${(x.n/x.a.clicks*100).toFixed(x.n/x.a.clicks<0.1?1:0)}% converted</span>`:""}</span></span><span class="mono">${eur(priceOf(x.a,pos))}</span></div></li>`).join("")}</ul>${L.length>25?`<p class="muted" style="font-size:.86rem">And ${L.length-25} more with fewer sales. Use Show all in All placements to see them.</p>`:""}`;
     foot="Partners see these as Available on their page.";}
   return `<div class="modal" data-gclose="1" role="dialog" aria-modal="true" aria-labelledby="gl-t"><div class="modal-in gmodal">
     <div class="gm-h"><h2 id="gl-t">${title}</h2><button class="x" data-gclose="1" aria-label="Close">×</button></div>
@@ -1530,7 +1357,7 @@ function rowDetail(a,t,g){
   return `<div class="rdetail">
     <div class="rd-col"><span class="eyebrow">Sales, last 12 months</span>${line("1st",sl.s1,sl.v1,sl.c1,sl.b1)}${line("2nd",sl.s2,sl.v2,sl.c2,sl.b2)}${line("3rd",sl.s3,sl.v3,sl.c3,sl.b3)}${line("Not placed",sl.so,sl.vo,sl.co,sl.bo)}${!(sl.s1||sl.s2||sl.s3||sl.so)?'<div class="muted">No sales tracked</div>':""}</div>
     <div class="rd-col"><span class="eyebrow">Group</span><div>${teamMetaChip(a,g)}</div>
-      <span class="eyebrow" style="margin-top:8px">Traffic, 12 months</span><div>${a.views.toLocaleString("en-GB")} views · ${a.clicks.toLocaleString("en-GB")} clicks${a.views>=50?" · "+Math.round(a.clicks/a.views*100)+"% click rate":""} ${trendChip(a)}</div>
+      <span class="eyebrow" style="margin-top:8px">Traffic, 12 months</span><div>${a.views.toLocaleString("en-GB")} views · ${a.clicks.toLocaleString("en-GB")} clicks${ast(a)}${a.views>=50?" · "+Math.round(a.clicks/a.views*100)+"% click rate":""} ${trendChip(a)}</div>
       ${a.mon?`<div class="mbar-wrap">${monBars(a)}<span class="muted" style="font-size:.74rem">Grey: views. Green: clicks to providers. Hover a month for numbers. The last bar is this month so far.</span></div>`:""}
       ${sh["1"]||sh["2"]?`<span class="eyebrow" style="margin-top:8px">On the page now <span class="muted" style="text-transform:none;letter-spacing:0">(${esc(shownLbl())})</span></span><div>1st ${esc(sh["1"]||"not recorded")} · 2nd ${esc(sh["2"]||"not recorded")}</div>`:""}
       ${fam?`<span class="eyebrow" style="margin-top:8px">Family</span><div>${esc(famNames(fam).join(" + "))}</div>`:""}
@@ -1548,6 +1375,12 @@ const monCount=()=>{const b=monBase();return (TODAY.getFullYear()-b.y)*12+TODAY.
 let MON_TOT=null;
 function monTotals(){if(MON_TOT)return MON_TOT;const n=monCount(),t=Array.from({length:n},()=>({v:0,c:0}));
   ARTS.forEach(a=>(a.mon||[]).forEach((x,i)=>{if(x&&t[i]){t[i].v+=x.v;t[i].c+=x.c}}));return MON_TOT=t}
+// Under 12 months old: went live after tracking began and less than 12 months ago, so its
+// 12-month views and clicks only cover the months since. Shown as an asterisk next to the figures.
+function young(a){const m=a.mon;if(!m)return null;const f=m.findIndex(x=>x&&x.v>0);if(f<1)return null;
+  const d=monDate(f),n=(TODAY.getFullYear()-d.getFullYear())*12+TODAY.getMonth()-d.getMonth();
+  return n<12?{d,n:Math.max(1,n)}:null}
+function ast(a){const y=young(a);return y?`<sup class="young" title="Under 12 months old: live since ${fmtM(y.d)}, so views and clicks cover about ${y.n} ${y.n===1?"month":"months"}, not 12">*</sup>`:""}
 // Trend on clicks to providers, as a share of all eSIM guide clicks, so summer and autumn don't fool it:
 // the last 3 complete months against the complete months before them (since the article went live)
 function monTrend(a){const m=a.mon;if(!m)return null;const n=monCount()-1,T=monTotals();
@@ -1574,7 +1407,7 @@ function teamMeta(a,t,g){
   const sl=a.sales||{},sb=(l,n,v)=>n?`${l} ${n} (${eur(v)})`:"";
   const sales=[sb("1st",sl.s1,sl.v1),sb("2nd",sl.s2,sl.v2)].filter(Boolean).join(" · ");
   const tip=(sl.b1||[]).concat(sl.b2||[]).map(x=>x.b+": "+x.n+" sales, "+eur(x.v)).join("\n");
-  return `<span class="mono stat-line" title="${esc(tip)}">${a.views.toLocaleString("en-GB")} views · ${a.clicks.toLocaleString("en-GB")} clicks${a.views>=50?" ("+Math.round(a.clicks/a.views*100)+"%)":""}${sales?" · sales "+sales:""}</span>${trendChip(a)}`;
+  return `<span class="mono stat-line" title="${esc(tip)}">${a.views.toLocaleString("en-GB")} views · ${a.clicks.toLocaleString("en-GB")} clicks${ast(a)}${a.views>=50?" ("+Math.round(a.clicks/a.views*100)+"%)":""}${sales?" · sales "+sales:""}</span>${trendChip(a)}`;
 }
 // Admin seats: who has it and until when, nothing else
 function teamSeat(a,s,st){
