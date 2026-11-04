@@ -263,7 +263,7 @@ function applyTeamData(data){
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   SALES_FROM=data.salesFrom||null; PAYMENTS=data.payments||[]; SHOWN=data.shown||{};SHOWN_AT=data.shownAt||null; SCEN=data.scenarios||{};
   ARTS=(data.articles||[]).map(r=>({name:r.name,region:r.region,views:r.views,clicks:r.clicks,sales:r.sales||null,mon:parseMonthly(r.monthly),slots:[{pos:1,prov:r.p1_prov||"",exp:r.p1_exp||"",flag:r.p1_flag||""},{pos:2,prov:r.p2_prov||"",exp:r.p2_exp||"",flag:r.p2_flag||""}]}));
-  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=(data.activity||[]).filter(e=>!IGNORE_ACT.includes(String(e.email||"").toLowerCase())); TEAM_EV=data.teamActivity||[]; MON_TOT=null; INBOUND=data.inbound||[]; RES=data.results||null; POSRES=data.posres||null; MYREGIONS=null; REVIEWS=data.reviews||{}; REVIEW_DONE=false;
+  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=(data.activity||[]).filter(e=>!IGNORE_ACT.includes(String(e.email||"").toLowerCase())); TEAM_EV=data.teamActivity||[]; MON_TOT=null; INBOUND=data.inbound||[]; RES=data.results||null; POSRES=data.posres||null; MYREGIONS=null; REVIEWS=data.reviews||{}; REVIEW_DONE=false; PIPE=data.pipeline||[];
   offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailsOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
   setRegions();
 }
@@ -419,7 +419,7 @@ function render(){
     $("pv-open").addEventListener("click",()=>startPreview($("as-prov").value));
   }
   const who="<b>"+esc(v)+"</b>";
-  $("forwho").innerHTML=v===null?`<b>Admin view</b> · visible only to Nomadwise <span class="seg tview" role="group" aria-label="Admin section"><button data-tview="place" aria-pressed="${TVIEW!=="results"&&TVIEW!=="pos"}">Placements</button><button data-tview="results" aria-pressed="${TVIEW==="results"}">Partner results</button><button data-tview="pos" aria-pressed="${TVIEW==="pos"}">By position</button></span>`:(v==="__new"?"Prepared for <b>a new partner</b>":"Prepared for "+who);
+  $("forwho").innerHTML=v===null?`<b>Admin view</b> · visible only to Nomadwise <span class="seg tview" role="group" aria-label="Admin section"><button data-tview="place" aria-pressed="${TVIEW!=="results"&&TVIEW!=="pos"&&TVIEW!=="pipe"}">Placements</button><button data-tview="pipe" aria-pressed="${TVIEW==="pipe"}">Partner pipeline${plNeeds()?` <span class="pl-badge" title="Open requests and ones needing discussion">${plNeeds()}</span>`:""}</button><button data-tview="results" aria-pressed="${TVIEW==="results"}">Partner results</button><button data-tview="pos" aria-pressed="${TVIEW==="pos"}">By position</button></span>`:(v==="__new"?"Prepared for <b>a new partner</b>":"Prepared for "+who);
   if(ROLE==="provider"){document.querySelector("header.top h1").textContent=MYNAME?"Welcome, "+firstOf(MYNAME):"Partner placements"}
   const totalViews=TOTALS?+TOTALS.views:ARTS.reduce((t,a)=>t+a.views,0);
   const totalClicks=TOTALS?+TOTALS.clicks:ARTS.reduce((t,a)=>t+a.clicks,0);
@@ -429,6 +429,7 @@ function render(){
     <div class="stat"><span class="v">${totalClicks.toLocaleString("en-GB")}</span><span class="l">clicks to providers</span></div>
     ${v===null?`<div class="stat"><span class="v">${totalViews?(totalClicks/totalViews*100).toFixed(1):"0"}%</span><span class="l">blended click rate</span></div>`:""}`;
   OPEN_NOW=av;
+  if(v===null&&TVIEW==="pipe"){$("grid").style.gridTemplateColumns="minmax(0,1fr)";$("main").innerHTML=pipelinePanel();$("rail").innerHTML="";bind();plBind();mbar();return}
   if(v===null&&(TVIEW==="results"||TVIEW==="pos")){$("grid").style.gridTemplateColumns="minmax(0,1fr)";$("main").innerHTML=TVIEW==="pos"?posPanel():resultsPanel();$("rail").innerHTML="";bind();mbar();return}
   $("main").innerHTML=(v===null?teamPanels():"")+(v!==null&&v!=="__new"?currentPanel(v):"")+inventoryPanel(v)+bidBox()+(v===null?glanceModal():"");
   $("rail").innerHTML=railPanel(v);
@@ -1035,6 +1036,69 @@ function teamTracking(){if(teamTracking.on)return;teamTracking.on=true;
 let GEDIT=null, OPEN_NOW=[0,0,0]; const GEXP=new Set();
 // ---------- At a glance: tap a number to see what's behind it ----------
 let GLANCE=null;
+// ---------- partner pipeline (admin only): a simple manual CRM for provider requests ----------
+let PIPE=[], PF="All", PADD=false, PEDIT=null;
+const PL_ST=["Open request","Discussion needed","In conversation","Waitlist","Active placement","Past placement","Declined"];
+const PL_SRC=["Email","LinkedIn","WhatsApp","Website form","Other"];
+const PL_TAG=["Inbound","Existing partner"];
+const plNeeds=()=>PIPE.filter(r=>r.status==="Open request"||r.status==="Discussion needed").length;
+const plOpts=(list,cur,blank)=>(blank?`<option value="">${blank}</option>`:"")+list.map(x=>`<option${x===cur?" selected":""}>${esc(x)}</option>`).join("");
+const plDate=d=>{if(!d)return "";const t=new Date(String(d).length===10?d+"T12:00:00":d);return isNaN(t)?esc(d):fmtD(t)};
+function plForm(r,isNew){const v=k=>esc((r&&r[k])||"");const p=isNew?"pa":"pe";
+  return `<form class="pl-form" id="${p}-form" data-plid="${isNew?"":esc(r.id)}">
+    <div class="pl-grid">
+      <label class="fl">Company<input id="${p}-company" value="${v("company")}" required></label>
+      <label class="fl">Contact name<input id="${p}-contact_name" value="${v("contact_name")}"></label>
+      <label class="fl">Email<input id="${p}-email" type="email" value="${v("email")}"></label>
+      <label class="fl">Came in via<select id="${p}-source">${plOpts(PL_SRC,r&&r.source,"Choose")}</select></label>
+      ${isNew?`<label class="fl">Status<select id="${p}-status">${plOpts(PL_ST,"Open request")}</select></label>`:""}
+      <label class="fl">Tag<select id="${p}-tag">${plOpts(PL_TAG,(r&&r.tag)||"Inbound")}</select></label>
+      <label class="fl">Revisit<input id="${p}-revisit" value="${v("revisit")}" placeholder="e.g. Jan 2027 or 15 Dec"></label>
+    </div>
+    <label class="fl">What they asked for<textarea id="${p}-summary" rows="3">${v("summary")}</textarea></label>
+    <label class="fl">Our notes<textarea id="${p}-notes" rows="3" placeholder="Our own checks: coverage, prices, who they are">${v("notes")}</textarea></label>
+    <div class="acts"><button class="btn primary" type="submit">${isNew?"Save":"Save changes"}</button><button class="btn ghost" type="button" data-plcancel="${isNew?"add":"edit"}">Cancel</button></div></form>`}
+function pipelinePanel(){
+  const cnt=s=>PIPE.filter(r=>r.status===s).length;
+  const chips=[["All",PIPE.length]].concat(PL_ST.map(s=>[s,cnt(s)]));
+  const rows=PIPE.filter(r=>PF==="All"||r.status===PF);
+  const card=r=>{const ed=PEDIT===r.id;
+    return `<article class="pl-card${ed?" editing":""}"><div class="pl-row">
+      <div class="pl-who"><span class="pl-tag${r.tag==="Existing partner"?" ex":""}">${esc(r.tag||"Inbound")}</span>
+        <button class="pl-co" data-pledit="${esc(r.id)}">${esc(r.company)}</button>
+        ${r.contact_name||r.email?`<div class="pl-meta">${[r.contact_name?esc(r.contact_name):"",r.email?`<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>`:""].filter(Boolean).join(" · ")}</div>`:""}
+        <div class="pl-meta">Received ${plDate(r.received_date)}${r.source?" · via "+esc(r.source):""}</div></div>
+      <div class="pl-txt"><span class="pl-l">They asked for</span><p>${r.summary?esc(r.summary):'<span class="muted">Nothing noted yet</span>'}</p>
+        <span class="pl-l">Our notes</span><p>${r.notes?esc(r.notes):'<span class="muted">Nothing noted yet</span>'}</p></div>
+      <div class="pl-side"><span class="pl-l">Status</span><select class="pl-s" data-s="${esc(r.status)}" data-plst="${esc(r.id)}" aria-label="Status for ${esc(r.company)}">${plOpts(PL_ST,r.status)}</select>
+        <button class="btn small" data-pledit="${esc(r.id)}">${ed?"Close":"Edit details"}</button>${r.revisit?`<span class="pl-rev">Revisit ${esc(r.revisit)}</span>`:""}</div></div>
+      ${ed?plForm(r,false):""}</article>`};
+  return `<section class="panel internal pl"><div class="phead"><div><h2>Partner pipeline<span class="tag-internal">Admin only</span></h2>
+      <p class="note" style="margin:4px 0 0;max-width:640px">Everyone who has asked to work with us, in one place. Add requests by hand, keep your own notes, and move them forward when you decide. Nothing is sent from this page.</p></div>
+      <button class="btn primary" id="pl-add">${PADD?"Close":"+ Add request"}</button></div>
+    ${PADD?`<div class="pl-card editing">${plForm(null,true)}</div>`:""}
+    <div class="pl-chips" role="group" aria-label="Filter by status">${chips.map(([s,n])=>`<button class="ichip${PF===s?" on":""}" data-plf="${esc(s)}" aria-pressed="${PF===s}">${esc(s)} <span class="pl-n">${n}</span></button>`).join("")}</div>
+    <div class="pl-list">${rows.map(card).join("")||`<p class="muted">${PIPE.length?"Nothing with this status.":"No requests yet. Press Add request to log the first one."}</p>`}</div></section>`}
+async function plSave(id,row){const {data,error}=await sb.rpc("partners_team_pipeline",{p_session:SESSION,p_id:id||null,p_row:row});
+  if(error){toast("Couldn't save: "+error.message);return null}
+  const i=PIPE.findIndex(x=>x.id===data.id);if(i>=0)PIPE[i]=Object.assign({},PIPE[i],data);else PIPE.unshift(data);return data}
+function plBind(){
+  if($("pl-add"))$("pl-add").addEventListener("click",()=>{PADD=!PADD;PEDIT=null;render();if(PADD&&$("pa-company"))$("pa-company").focus()});
+  document.querySelectorAll("[data-plf]").forEach(el=>el.addEventListener("click",()=>{PF=el.dataset.plf;render()}));
+  document.querySelectorAll("[data-pledit]").forEach(el=>el.addEventListener("click",()=>{PEDIT=PEDIT===el.dataset.pledit?null:el.dataset.pledit;PADD=false;render();const f=$("pe-company");if(f)f.focus()}));
+  document.querySelectorAll("[data-plcancel]").forEach(el=>el.addEventListener("click",()=>{if(el.dataset.plcancel==="add")PADD=false;else PEDIT=null;render()}));
+  document.querySelectorAll("[data-plst]").forEach(el=>el.addEventListener("change",async()=>{const id=el.dataset.plst,r=PIPE.find(x=>x.id===id),prev=r.status;r.status=el.value;
+    if(await plSave(id,{status:el.value})){toast(r.company+": "+el.value);render()}else{r.status=prev;render()}}));
+  const read=(p,keys)=>{const o={};keys.forEach(k=>{const e=$(p+"-"+k);if(e)o[k]=e.value});return o};
+  const KEYS=["company","contact_name","email","source","tag","revisit","summary","notes"];
+  const fa=$("pa-form");if(fa)fa.addEventListener("submit",async e=>{e.preventDefault();const row=read("pa",KEYS.concat(["status"]));
+    if(!row.company.trim()){toast("Add the company name");return}
+    if(await plSave(null,row)){PADD=false;PF="All";toast("Added "+row.company.trim());render()}});
+  const fe=$("pe-form");if(fe)fe.addEventListener("submit",async e=>{e.preventDefault();const row=read("pe",KEYS);
+    if(!row.company.trim()){toast("Add the company name");return}
+    if(await plSave(fe.dataset.plid,row)){PEDIT=null;toast("Saved");render()}});
+}
+
 // ---------- inbound partner requests (admin, right-hand column) ----------
 let INBOUND=[], IB=null, IBR={}, IBD={}; let MYREGIONS=null; let REVIEWS={}, REVIEW_DONE=false;
 // Our own test logins: never shown in partner activity, visits or "picked but not sent"
@@ -1305,7 +1369,7 @@ function railPanel(v){
     return `<section class="panel"><h3 style="margin-bottom:8px">At a glance</h3>
       ${g(openO,openO===1?"offer waiting":"offers waiting","","offers")}${g(ren,"slots in renewal","ended, held up to 60 days","renewal")}${g(soon,"slots ending","in the next 60 days","ending")}
       ${g(OPEN_NOW[1],"1st positions open","free to book now","open1")}${g(OPEN_NOW[2],"2nd positions open","free to book now","open2")}${g(wk,wk===1?"partner visit":"partner visits","this week","visits")}
-      <p class="note" style="margin-top:8px">To see exactly what a partner sees, pick them at the top and press Open their page.</p></section>${inboundPanel()}${inboundModal()}`}
+      <p class="note" style="margin-top:8px">To see exactly what a partner sees, pick them at the top and press Open their page.</p></section>`}
   const T=totals();
   if(submitted) return `<section class="panel" id="selp"><h2>Your request</h2><div class="done"><b>Sent to Nomadwise${submitted.when?" on "+fmtD(new Date(submitted.when)):""}.</b><br>${submitted.items.length} ${submitted.items.length===1?"item":"items"}, package price ${eur(submitted.offer)}. We'll reply within 2 working days. You can send another once we've answered this one.</div>
     ${PREVIEW?`<p class="note">Preview only. Nothing was sent.</p><button class="btn small" id="reset">Reset preview</button>`:""}</section>`;
