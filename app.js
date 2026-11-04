@@ -1117,7 +1117,7 @@ function holdOf(a,s){
   const h=HOLDS[a.name+"|"+s.pos];return h?{who:h.p,until:h.until,note:h.note,id:h.id}:null}
 // ----- Deals are recorded by chat or by accepting an offer; the portal only shows them -----
 function dealLine(d){const ended=d.endedAt;
-  return `<li class="dl-li${ended?" ended":""}"><div class="dl-li-h"><span><b>${esc(d.a)} ${plOf(d.pos)}</b> · ${esc(d.p)} <span class="muted">${dmy(d.start)} to ${dmy(d.end)}${d.price!=null?" · "+eur(d.price):""}${d.inv?" · invoice "+esc(d.inv):""}${d.type!=="Paid exclusive"?" · "+esc(d.type):""}</span></span>
+  return `<li class="dl-li${ended?" ended":""}"><div class="dl-li-h"><span><b>${esc(d.a)} ${plOf(d.pos)}</b> · ${esc(d.p)} <span class="muted">${dmy(d.start)} to ${dmy(d.end)}${d.price!=null?" · "+eur(d.price):""}${d.inv?" · invoice "+esc(d.inv):d.via==="impact"?" · paid through Impact":""}${d.type!=="Paid exclusive"?" · "+esc(d.type):""}</span></span>
     ${ended?`<span class="pill ${d.how==="mistake"?"due":"soon"}">${d.how==="mistake"?"Undone":"Ended early"} ${dmy(d.endedAt)}</span>`:""}</div>
     <div class="note">${d.src==="backfill"?"Loaded from the existing list on "+dmy(d.at):"Recorded by "+esc(d.by||"")+" on "+dmy(d.at)}${d.note&&d.src!=="backfill"?" · "+esc(d.note):""}${ended&&d.why?" · "+esc(d.why):""}</div></li>`}
 // Under an expanded guide row: its deals and holds, with the actions
@@ -1129,7 +1129,7 @@ function rowDeals(a){const L=DEALS.filter(d=>d.a===a.name).slice(0,8);
 // ----- Needs checking (rail) -----
 function checksPanel(){const open=CHECKS.filter(c=>!c.ok),done=CHECKS.filter(c=>c.ok);
   const item=c=>`<li class="ck"><div class="ck-t">${esc(c.title)}</div><div class="note">${esc(c.fix)}</div>
-    ${c.kind==="noinv"&&c.deal?`<div class="ck-inv"><input id="ckinv-${esc(c.deal)}" value="${esc(CKINV[c.deal]||"")}" placeholder="Invoice number" aria-label="Invoice number for ${esc(c.article)}"><button class="btn small" data-ckinv="${esc(c.deal)}">Add invoice</button></div>`:""}
+    ${c.kind==="noinv"&&c.deal?`<div class="ck-inv"><input id="ckinv-${esc(c.deal)}" value="${esc(CKINV[c.deal]||"")}" placeholder="Invoice number" aria-label="Invoice number for ${esc(c.article)}"><button class="btn small" data-ckinv="${esc(c.deal)}">Add invoice</button><button class="btn small ghost" data-ckimp="${esc(c.deal)}">Paid through Impact</button></div>`:""}
     <div class="acts"><button class="btn small ghost" data-ckok="${esc(c.key)}">Mark as checked</button></div></li>`;
   return `<section class="panel internal ckp"><div class="phead"><h3>Needs checking <span class="${open.length?"pl-badge":"muted"}">${open.length}</span></h3></div>
     ${open.length?`<ul class="ck-list">${open.slice(0,CKOPEN?200:6).map(item).join("")}</ul>${open.length>6?`<button class="lnk" id="ck-more">${CKOPEN?"Show fewer":"Show all "+open.length}</button>`:""}`:`<p class="note">Nothing to check. Paid slots, invoices and the live pages agree.</p>`}
@@ -1151,6 +1151,9 @@ function mrBind(){
   document.querySelectorAll("[data-ckinv]").forEach(el=>el.addEventListener("click",async()=>{const id=el.dataset.ckinv,v=(CKINV[id]||"").trim();if(!v){toast("Type the invoice number");return}
     const {error}=await sb.rpc("partners_team_deal_invoice",{p_session:SESSION,p_id:id,p_invoice:v,p_on:isoD(TODAY)});if(error){toast(error.message);return}
     delete CKINV[id];toast("Invoice "+v+" added");reloadTeam()}));
+  document.querySelectorAll("[data-ckimp]").forEach(el=>el.addEventListener("click",async()=>{const id=el.dataset.ckimp;el.disabled=true;
+    const {error}=await sb.rpc("partners_team_deal_paid",{p_session:SESSION,p_id:id,p_via:"impact"});if(error){el.disabled=false;toast(error.message);return}
+    toast("Marked as paid through Impact");reloadTeam()}));
 }
 
 // ---------- Ask me anything (team only) ----------

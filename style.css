@@ -616,8 +616,9 @@ details.pco[open]>summary{background:var(--bg);border-bottom:1px solid var(--lin
 .ck:first-child{border-top:0}
 .ck-t{font-size:.88rem;font-weight:600}
 .ck.ok .ck-t{font-weight:500;color:var(--muted)}
-.ck-inv{display:flex;gap:6px}
-.ck-inv input{flex:1;min-width:0}
+.ck-inv{display:flex;flex-wrap:wrap;gap:6px}
+.ck-inv input{flex:1;min-width:110px}
+.ck-inv [data-ckimp]{flex-basis:100%}
 @media (max-width:760px){.dl-cols{grid-template-columns:1fr}}
 
 .ask-fab{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:max(16px,env(safe-area-inset-bottom,0px));z-index:40;display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:0 18px;border-radius:999px;border:1px solid color-mix(in srgb,var(--internal) 50%,var(--line));background:var(--surface);color:var(--internal);font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.14);cursor:pointer}
