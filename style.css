@@ -648,4 +648,7 @@ details.pco[open]>summary{background:var(--bg);border-bottom:1px solid var(--lin
 @media (max-width:560px){.ask-p{inset:0;width:100%;border-radius:0}.ask-fab span{display:none}.ask-fab{padding:0 14px}}
 
 /* Under 12 months old: asterisk next to views and clicks */
-.young{color:var(--brand-text);font-weight:700;font-size:.8em;margin-left:1px;cursor:help;vertical-align:super;line-height:0}
+.young{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:var(--brand-soft);color:var(--brand-text);border:1px solid color-mix(in srgb,var(--brand) 35%,transparent);font-family:var(--f-body,inherit);font-size:.72rem;font-weight:600;line-height:1.5;white-space:nowrap;cursor:help;vertical-align:1px}
+.young-mk{color:var(--brand-text);font-weight:700;margin-left:1px;cursor:help}
+.stat-line+.young,.rdetail .young{margin-left:0;margin-right:6px}
+td .young{margin-left:4px;padding:0 5px;font-size:.68rem}

@@ -717,7 +717,7 @@ function pbPanel(){
     </div>
     ${optA.length?`<h3 style="margin:14px 0 6px">Optional extras <span class="muted" style="font-weight:500">· monthly add-ons on top of the core price; tick to include in this scenario</span></h3>
     <div class="scroll"><table class="tbl"><thead><tr><th></th><th>Article</th><th class="num">Price a month</th><th class="num">A year</th><th class="num">1st pos. sales</th><th class="num">Our comm.</th><th class="num">Clicks</th><th class="num">Their net</th></tr></thead><tbody>
-    ${optA.map(a=>{const e=S1(a),m=+PB.optPrice[a.name]||0,on=PB.opt.has(a.name),net=e.v-m*12-e.c;return `<tr class="${on?"pb-on":""}"><td><input type="checkbox" data-pbo="${esc(a.name)}" ${on?"checked":""} aria-label="Include ${esc(a.name)}"></td><td>${esc(a.name)} 1st</td><td class="num"><span class="mono">€</span><input type="number" min="0" data-pbop="${esc(a.name)}" value="${m}" style="width:70px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font:inherit"></td><td class="num mono">${eur(m*12)}</td><td class="num mono">${e.v?eur(e.v):'<span class="muted">€0</span>'} <span class="muted" style="font-size:.74rem">${e.n}</span></td><td class="num mono muted">${eur(e.c)}</td><td class="num mono muted">${a.clicks||0}${ast(a)}</td><td class="num mono">${eurS(net)}</td></tr>`}).join("")}
+    ${optA.map(a=>{const e=S1(a),m=+PB.optPrice[a.name]||0,on=PB.opt.has(a.name),net=e.v-m*12-e.c;return `<tr class="${on?"pb-on":""}"><td><input type="checkbox" data-pbo="${esc(a.name)}" ${on?"checked":""} aria-label="Include ${esc(a.name)}"></td><td>${esc(a.name)} 1st</td><td class="num"><span class="mono">€</span><input type="number" min="0" data-pbop="${esc(a.name)}" value="${m}" style="width:70px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font:inherit"></td><td class="num mono">${eur(m*12)}</td><td class="num mono">${e.v?eur(e.v):'<span class="muted">€0</span>'} <span class="muted" style="font-size:.74rem">${e.n}</span></td><td class="num mono muted">${eur(e.c)}</td><td class="num mono muted">${a.clicks||0}${ast(a,1)}</td><td class="num mono">${eurS(net)}</td></tr>`}).join("")}
     </tbody></table></div>
     <p class="note">Prices here are what ${esc(p)} sees for each optional country when you share. 1st pos. sales is what the 1st position on that article sold in the last 12 months, whoever held it.</p>`:""}
     <div class="filters" style="margin:10px 0"><input type="search" id="pb-q" placeholder="Search an article" value="${esc(PB.q)}" aria-label="Search the builder"></div>
@@ -728,7 +728,7 @@ function pbPanel(){
         </tbody></table></div></div>
       <div><h3 style="margin:4px 0 6px">Could add <span class="muted" style="font-weight:500">· 1st position free by ${fmtD(win)}, best sellers first</span></h3>
         <div class="scroll ren-list"><table class="tbl"><thead><tr><th></th><th>Article</th><th class="num">List</th><th class="num">1st pos. sales</th><th class="num">Clicks</th><th>Free</th></tr></thead><tbody>
-        ${candRows.map(r=>`<tr class="${PB.add.has(r.a.name)?"pb-on":""}"><td><input type="checkbox" data-pba="${esc(r.a.name)}" ${PB.add.has(r.a.name)?"checked":""} aria-label="Add ${esc(r.a.name)}"></td><td>${esc(r.a.name)}${r.holder?` <span class="muted" style="font-size:.74rem">${esc(r.holder)}</span>`:""}</td><td class="num mono">${eur(lp(r.a))}</td><td class="num mono">${r.e.v?eur(r.e.v):'<span class="muted">€0</span>'} <span class="muted" style="font-size:.74rem">${r.e.n}</span></td><td class="num mono muted">${r.a.clicks||0}${ast(r.a)}</td><td class="muted" style="white-space:nowrap">${r.free<=TODAY?"now":fmtD(r.free)}</td></tr>`).join("")||'<tr><td colspan="6" class="muted">Nothing free in that window.</td></tr>'}
+        ${candRows.map(r=>`<tr class="${PB.add.has(r.a.name)?"pb-on":""}"><td><input type="checkbox" data-pba="${esc(r.a.name)}" ${PB.add.has(r.a.name)?"checked":""} aria-label="Add ${esc(r.a.name)}"></td><td>${esc(r.a.name)}${r.holder?` <span class="muted" style="font-size:.74rem">${esc(r.holder)}</span>`:""}</td><td class="num mono">${eur(lp(r.a))}</td><td class="num mono">${r.e.v?eur(r.e.v):'<span class="muted">€0</span>'} <span class="muted" style="font-size:.74rem">${r.e.n}</span></td><td class="num mono muted">${r.a.clicks||0}${ast(r.a,1)}</td><td class="muted" style="white-space:nowrap">${r.free<=TODAY?"now":fmtD(r.free)}</td></tr>`).join("")||'<tr><td colspan="6" class="muted">Nothing free in that window.</td></tr>'}
         </tbody></table></div></div>
     </div>
     ${dropped.length||added.length?`<p class="note"><b>Dropping:</b> ${dropped.map(a=>esc(a.name)).join(", ")||"none"}. <b>Adding:</b> ${added.map(x=>esc(x.a.name)).join(", ")||"none"}.</p>`:""}`;
@@ -1009,7 +1009,7 @@ function inventoryPanel(v){
   const tiers=`<div class="tiers">${S.tiers.map(t=>`<div class="tier"><span class="n">${esc(t.name)}</span><span class="r">${esc(t.desc)}</span><div class="pp"><span class="pc"><span class="pl">1st</span><span class="pv">${eur(t.p1)}</span></span><span class="pc"><span class="pl">2nd</span><span class="pv">${eur(t.p2)}</span></span></div></div>`).join("")}</div>`;
   const regs=REGION_ORDER.filter(r=>ARTS.some(a=>regionOf[a.name]===r));
   return `<section class="panel"><div class="phead"><h2>${team?"All placements":"Available placements"}</h2><span class="muted">12-month term · prices per year</span></div>
-    ${team?`<details class="howto"><summary>How these figures work</summary><p class="note">Views and clicks to eSIM providers over the last 12 months, measured on nomadwise.io. Click rate is clicks per page view. An asterisk (*) means the article is under 12 months old, so its figures only cover the months since it went live (hover it for how many). Sales are the last 12 months${SALES_FROM?" (from "+fmtD(new Date(SALES_FROM+"T00:00:00"))+")":""} from the sales feed: the number of sales and, in brackets, what customers paid the brand. Each brand counts towards the position it held: the current holder, or a brand that held 1st or 2nd earlier in the year (from the July positioning sheet and the May and August swaps). 3rd is the brand mentioned further down. “Not placed” is a brand we have no record of in 1st or 2nd on that article. Hover a figure to see the brands and our commission. Admin only: providers see the tier, not these figures. Tap an article name for sales by brand and to change its group.</p></details>`:""}
+    ${team?`<details class="howto"><summary>How these figures work</summary><p class="note">Views and clicks to eSIM providers over the last 12 months, measured on nomadwise.io. Click rate is clicks per page view. A blue * with “New guide · 5 months of figures” means the guide is under 12 months old, so its views and clicks only cover the months since it went live. Sales are the last 12 months${SALES_FROM?" (from "+fmtD(new Date(SALES_FROM+"T00:00:00"))+")":""} from the sales feed: the number of sales and, in brackets, what customers paid the brand. Each brand counts towards the position it held: the current holder, or a brand that held 1st or 2nd earlier in the year (from the July positioning sheet and the May and August swaps). 3rd is the brand mentioned further down. “Not placed” is a brand we have no record of in 1st or 2nd on that article. Hover a figure to see the brands and our commission. Admin only: providers see the tier, not these figures. Tap an article name for sales by brand and to change its group.</p></details>`:""}
     <div class="legend" aria-label="Key">${(team?[["available","Open"],["held","Held"],["reserved","In renewal or reserved"]]:filt.all?[["available","Available"],["selected","Selected"],["mine","Yours"],["bid","Offers open"],["reserved","Reserved or in renewal"],["taken","Unavailable"]]:[["available","Available"],["selected","Selected"],["mine","Yours"],["bid","Offers open"]]).map(([c,l])=>`<span class="key ${c}">${l}</span>`).join("")}</div>
     ${!team&&MYREGIONS?`<p class="regnote">You're seeing our ${esc(regList(MYREGIONS))} guides. If you'd like to see other regions too, just ask us.</p>`:""}
     <div class="filters"><input type="search" id="f-q" placeholder="Search a country or city" value="${esc(filt.q)}" aria-label="Search articles">
@@ -1342,7 +1342,7 @@ function glanceModal(){if(!GLANCE)return "";const k=GLANCE;
     const L=ARTS.map(a=>({a,s:a.slots[pos-1],st:status(a,a.slots[pos-1],null)})).filter(x=>x.st.k==="available").map(x=>({...x,v:+((x.a.sales||{})["v"+pos])||0,n:+((x.a.sales||{})["s"+pos])||0,fr:frActive(x.a,x.s)}));
     L.sort((x,y)=>y.v-x.v||y.a.clicks-x.a.clicks);
     title=L.length+" "+pl+" positions open";intro=`Free to book now, best sellers first. "Sales" is what the ${pl} position there sold in 12 months, whoever was showing, with the number of sales in brackets. "Converted" is sales ÷ clicks: ${(()=>{const x=L.find(y=>y.n&&y.a.clicks);return x?`${esc(x.a.name)}'s ${x.n} sales from ${x.a.clicks} clicks is ${(x.n/x.a.clicks*100).toFixed(x.n/x.a.clicks<0.1?1:0)}%`:"sales divided by clicks"})()}. ${eur(L.reduce((t,x)=>t+priceOf(x.a,pos),0))} a year at list if all were sold.`;
-    body=`<ul>${L.slice(0,25).map(x=>`<li class="gr"><div class="gr-a"><b>${esc(x.a.name)}</b> <span class="tchip">${esc(grp(x.a).name)}</span>${trendChip(x.a)}${x.fr?` <span class="pill fr">${esc(x.fr)} first refusal</span>`:""}</div><div class="gr-m"><span>${x.v?"sales <b>"+eur(x.v)+"</b> <span class=\"gsub\">("+x.n+")</span>":'<span class="muted">no sales tracked</span>'} <span class="muted">· ${x.a.clicks.toLocaleString("en-GB")} clicks${ast(x.a)}${x.n&&x.a.clicks?` · <span title="${x.n} sales ÷ ${x.a.clicks} clicks">${(x.n/x.a.clicks*100).toFixed(x.n/x.a.clicks<0.1?1:0)}% converted</span>`:""}</span></span><span class="mono">${eur(priceOf(x.a,pos))}</span></div></li>`).join("")}</ul>${L.length>25?`<p class="muted" style="font-size:.86rem">And ${L.length-25} more with fewer sales. Use Show all in All placements to see them.</p>`:""}`;
+    body=`<ul>${L.slice(0,25).map(x=>`<li class="gr"><div class="gr-a"><b>${esc(x.a.name)}</b> <span class="tchip">${esc(grp(x.a).name)}</span>${trendChip(x.a)}${x.fr?` <span class="pill fr">${esc(x.fr)} first refusal</span>`:""}</div><div class="gr-m"><span>${x.v?"sales <b>"+eur(x.v)+"</b> <span class=\"gsub\">("+x.n+")</span>":'<span class="muted">no sales tracked</span>'} <span class="muted">· ${x.a.clicks.toLocaleString("en-GB")} clicks${ast(x.a,1)}${x.n&&x.a.clicks?` · <span title="${x.n} sales ÷ ${x.a.clicks} clicks">${(x.n/x.a.clicks*100).toFixed(x.n/x.a.clicks<0.1?1:0)}% converted</span>`:""}</span></span><span class="mono">${eur(priceOf(x.a,pos))}</span></div></li>`).join("")}</ul>${L.length>25?`<p class="muted" style="font-size:.86rem">And ${L.length-25} more with fewer sales. Use Show all in All placements to see them.</p>`:""}`;
     foot="Partners see these as Available on their page.";}
   return `<div class="modal" data-gclose="1" role="dialog" aria-modal="true" aria-labelledby="gl-t"><div class="modal-in gmodal">
     <div class="gm-h"><h2 id="gl-t">${title}</h2><button class="x" data-gclose="1" aria-label="Close">×</button></div>
@@ -1357,7 +1357,7 @@ function rowDetail(a,t,g){
   return `<div class="rdetail">
     <div class="rd-col"><span class="eyebrow">Sales, last 12 months</span>${line("1st",sl.s1,sl.v1,sl.c1,sl.b1)}${line("2nd",sl.s2,sl.v2,sl.c2,sl.b2)}${line("3rd",sl.s3,sl.v3,sl.c3,sl.b3)}${line("Not placed",sl.so,sl.vo,sl.co,sl.bo)}${!(sl.s1||sl.s2||sl.s3||sl.so)?'<div class="muted">No sales tracked</div>':""}</div>
     <div class="rd-col"><span class="eyebrow">Group</span><div>${teamMetaChip(a,g)}</div>
-      <span class="eyebrow" style="margin-top:8px">Traffic, 12 months</span><div>${a.views.toLocaleString("en-GB")} views · ${a.clicks.toLocaleString("en-GB")} clicks${ast(a)}${a.views>=50?" · "+Math.round(a.clicks/a.views*100)+"% click rate":""} ${trendChip(a)}</div>
+      <span class="eyebrow" style="margin-top:8px">Traffic, 12 months</span><div>${a.views.toLocaleString("en-GB")} views · ${a.clicks.toLocaleString("en-GB")} clicks${ast(a)}${a.views>=50?" · "+Math.round(a.clicks/a.views*100)+"% click rate":""} ${youngChip(a)}${trendChip(a)}</div>
       ${a.mon?`<div class="mbar-wrap">${monBars(a)}<span class="muted" style="font-size:.74rem">Grey: views. Green: clicks to providers. Hover a month for numbers. The last bar is this month so far.</span></div>`:""}
       ${sh["1"]||sh["2"]?`<span class="eyebrow" style="margin-top:8px">On the page now <span class="muted" style="text-transform:none;letter-spacing:0">(${esc(shownLbl())})</span></span><div>1st ${esc(sh["1"]||"not recorded")} · 2nd ${esc(sh["2"]||"not recorded")}</div>`:""}
       ${fam?`<span class="eyebrow" style="margin-top:8px">Family</span><div>${esc(famNames(fam).join(" + "))}</div>`:""}
@@ -1380,7 +1380,10 @@ function monTotals(){if(MON_TOT)return MON_TOT;const n=monCount(),t=Array.from({
 function young(a){const m=a.mon;if(!m)return null;const f=m.findIndex(x=>x&&x.v>0);if(f<1)return null;
   const d=monDate(f),n=(TODAY.getFullYear()-d.getFullYear())*12+TODAY.getMonth()-d.getMonth();
   return n<12?{d,n:Math.max(1,n)}:null}
-function ast(a){const y=young(a);return y?`<sup class="young" title="Under 12 months old: live since ${fmtM(y.d)}, so views and clicks cover about ${y.n} ${y.n===1?"month":"months"}, not 12">*</sup>`:""}
+function ast(a,short){const y=young(a);if(!y)return "";const m=y.n+(y.n===1?" month":" months"),tip=`New guide, live since ${fmtM(y.d)}: its views and clicks cover ${m}, not 12`;
+  return short?`<span class="young" title="${tip}">* ${y.n} mo</span>`:`<span class="young-mk" title="${tip}">*</span>`}
+function youngChip(a){const y=young(a);if(!y)return "";const m=y.n+(y.n===1?" month":" months");
+  return `<span class="young" title="Live since ${fmtM(y.d)}, so its views and clicks cover ${m}, not the full 12">* New guide · ${m} of figures</span>`}
 // Trend on clicks to providers, as a share of all eSIM guide clicks, so summer and autumn don't fool it:
 // the last 3 complete months against the complete months before them (since the article went live)
 function monTrend(a){const m=a.mon;if(!m)return null;const n=monCount()-1,T=monTotals();
@@ -1393,6 +1396,7 @@ function monTrend(a){const m=a.mon;if(!m)return null;const n=monCount()-1,T=monT
   const rs=rc/Math.max(1,sum(rec,i=>T[i].c)),es=ec/Math.max(1,sum(ear,i=>T[i].c)),r=es?rs/es:0;
   return {k:r>=1.5?"up":r<=0.67?"down":"flat",r,live}}
 function trendChip(a){const t=monTrend(a);if(!t)return "";
+  if((t.k==="new"||t.k==="few")&&young(a))return "";
   if(t.k==="new")return `<span class="trend new" title="Not enough history for a trend yet">live since ${fmtM(t.live)}</span>`;
   if(t.k==="few")return t.live?`<span class="trend new">live since ${fmtM(t.live)}</span>`:"";
   const lab={up:"↑ clicks rising",down:"↓ clicks falling",flat:"steady"}[t.k];
@@ -1407,21 +1411,23 @@ function teamMeta(a,t,g){
   const sl=a.sales||{},sb=(l,n,v)=>n?`${l} ${n} (${eur(v)})`:"";
   const sales=[sb("1st",sl.s1,sl.v1),sb("2nd",sl.s2,sl.v2)].filter(Boolean).join(" · ");
   const tip=(sl.b1||[]).concat(sl.b2||[]).map(x=>x.b+": "+x.n+" sales, "+eur(x.v)).join("\n");
-  return `<span class="mono stat-line" title="${esc(tip)}">${a.views.toLocaleString("en-GB")} views · ${a.clicks.toLocaleString("en-GB")} clicks${ast(a)}${a.views>=50?" ("+Math.round(a.clicks/a.views*100)+"%)":""}${sales?" · sales "+sales:""}</span>${trendChip(a)}`;
+  return `<span class="mono stat-line" title="${esc(tip)}">${a.views.toLocaleString("en-GB")} views · ${a.clicks.toLocaleString("en-GB")} clicks${ast(a)}${a.views>=50?" ("+Math.round(a.clicks/a.views*100)+"%)":""}${sales?" · sales "+sales:""}</span>${youngChip(a)}${trendChip(a)}`;
 }
 // Admin seats: who has it and until when, nothing else
 function teamSeat(a,s,st){
   const pos=`<span class="pos">${s.pos===1?"1st":"2nd"}</span>`;const c=s.prov&&S.contracts[s.prov];
   const sh=(SHOWN[a.name]||{})[String(s.pos)];const fr=frActive(a,s);
-  let main,sub="",cls=st.k==="mine"?"taken":st.k,price="";
+  let main,sub="",tip="",cls=st.k==="mine"?"taken":st.k,price="";
   if(s.flag==="E"){main=s.prov;sub="ongoing";cls="held"}
   else if(s.prov&&s.exp&&st.exp&&days(st.exp,TODAY)>=0){main=s.prov;const d=days(st.exp,TODAY);sub="to "+fmtD(st.exp)+(d<=60?" · ends in "+d+" days":"")+(s.pos===1&&c?((c.exclusive||[]).includes(a.name)?" · exclusive":""):"");cls=d<=60?"held soon":"held"}
-  else if(st.due){main=s.prov+" · in renewal";sub="ended "+fmtD(st.exp)+", held to "+fmtD((()=>{const x=new Date(st.exp);x.setDate(x.getDate()+60);return x})());cls="reserved"}
+  else if(st.due){const until=(()=>{const x=new Date(st.exp);x.setDate(x.getDate()+60);return x})(),left=Math.max(0,days(until,TODAY));
+    main=s.prov+" · can renew";sub="until "+fmtD(until)+" ("+left+(left===1?" day":" days")+"), then it opens";cls="reserved";
+    tip=s.prov+"'s paid slot ended on "+fmtD(st.exp)+". It's kept for "+s.prov+" for 60 days so they can renew, until "+fmtD(until)+". Nobody else can book it until then. If they renew, tell Claude in chat. If they don't, it opens to all partners on "+fmtD(until)+" by itself."}
   else if(st.k==="reserved"){main=st.label;sub=st.who||"";}
   else{main="Available";price=`<span class="pr">${eur(priceOf(a,s.pos))}</span>`;
     const showing=(s.prov&&!s.exp)?s.prov:(s.prov&&s.exp?s.prov:(sh||""));
     sub=[fr?fr+" first refusal":"",showing?"showing "+showing+", unpaid":""].filter(Boolean).join(" · ")}
-  return `<div class="seat ${cls} plain" title="${esc(main+(sub?", "+sub:""))}">${pos}<span class="st">${esc(main)}</span>${price}${sub?`<span class="who">${esc(sub)}</span>`:""}</div>`;
+  return `<div class="seat ${cls} plain" title="${esc(tip||main+(sub?", "+sub:""))}">${pos}<span class="st">${esc(main)}</span>${price}${sub?`<span class="who">${esc(sub)}</span>`:""}</div>`;
 }
 function seat(a,s,v,team){
   const st=status(a,s,v), k=key(a,s.pos), on=sel.has(k);
@@ -1471,7 +1477,7 @@ function railPanel(v){
     const wk=ACT_EV.filter(e=>e.kind==="visit"&&new Date(e.at)>new Date(Date.now()-7*864e5)).length;
     const g=(n,l,sub,act)=>`<button class="glance" data-glance="${act}" ${n?"":"disabled"}><span class="gv">${n}</span><span class="gl">${l}${sub?`<small>${sub}</small>`:""}</span>${n?'<span class="gx" aria-hidden="true">›</span>':""}</button>`;
     return `<section class="panel"><h3 style="margin-bottom:8px">At a glance</h3>
-      ${g(openO,openO===1?"offer waiting":"offers waiting","","offers")}${g(ren,"slots in renewal","ended, held up to 60 days","renewal")}${g(soon,"slots ending","in the next 60 days","ending")}
+      ${g(openO,openO===1?"offer waiting":"offers waiting","","offers")}${g(ren,"slots in renewal","ended, kept 60 days for the partner to renew","renewal")}${g(soon,"slots ending","in the next 60 days","ending")}
       ${g(OPEN_NOW[1],"1st positions open","free to book now","open1")}${g(OPEN_NOW[2],"2nd positions open","free to book now","open2")}${g(wk,wk===1?"partner visit":"partner visits","this week","visits")}
       <p class="note" style="margin-top:8px">To see exactly what a partner sees, pick them at the top and press Open their page.</p></section>${checksPanel()}`}
   const T=totals();
