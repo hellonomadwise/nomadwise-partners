@@ -575,3 +575,72 @@ details.pco[open]>summary{background:var(--bg);border-bottom:1px solid var(--lin
 .pl-form .fl{display:flex;flex-direction:column;gap:4px;font-size:.84rem;font-weight:600}
 .pl-form .acts{display:flex;gap:8px}
 @media (max-width:760px){.pl-row{grid-template-columns:1fr;gap:10px}}
+
+/* ---------- Deals and holds, Needs checking, Ask me anything (admin) ---------- */
+.dl-form{display:flex;flex-direction:column;gap:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg);padding:14px}
+.dl-step{display:flex;flex-direction:column;gap:10px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.dl-step:last-child{border-bottom:0;padding-bottom:0}
+.dl-n{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--internal);font-weight:700}
+.dl-row,.dl-add{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.dl-row .fl,.dl-add .fl{flex:1 1 180px}
+.dl-add .fl:first-child{flex:3 1 260px}
+.dl-form label.fl,.ckp label.fl,.dl-end label.fl{font-weight:600;color:var(--ink)}
+.dl-form input,.dl-form select,.dl-end input,.ck-inv input{min-height:44px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--ink);font-weight:400}
+.dl-form .btn,.dl-end .btn,.dl-cols .btn,.rd-deals .btn,.ckp .btn,#deals .phead .btn{min-height:44px}
+.dl-tbl td{vertical-align:middle}
+.dl-tbl input{width:auto;min-width:96px;min-height:40px;font-family:var(--f-mono);background:var(--surface)}
+.dl-tbl input[type=date]{font-family:var(--f-body)}
+.dl-tbl .x{border:0;background:none;color:var(--muted);font-size:1.3rem;min-width:44px;min-height:44px;cursor:pointer}
+.dl-now{font-size:.82rem;color:var(--muted)}
+.dl-now.bad{color:var(--coral);font-weight:600}
+.dl-now.warn{color:var(--amber);font-weight:600}
+.dl-msg{border-radius:10px;padding:10px 12px;font-size:.86rem}
+.dl-msg ul{margin:4px 0 0;padding-left:18px}
+.dl-msg.bad{background:var(--coral-soft);color:var(--coral)}
+.dl-msg.warn{background:var(--amber-soft);color:var(--amber)}
+.dl-cols{display:grid;grid-template-columns:1fr 1.4fr;gap:18px}
+.dl-list{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.dl-li{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--bg);display:flex;flex-direction:column;gap:4px;font-size:.88rem}
+.dl-li.ended{opacity:.75}
+.dl-li-h{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center}
+.dl-end{display:flex;flex-direction:column;gap:10px;margin-top:6px;padding:10px;border-radius:10px;background:var(--surface);border:1px solid var(--line)}
+.dl-choice{display:flex;flex-direction:column;gap:8px}
+.dl-choice .chk{align-items:flex-start;gap:10px;font-size:.88rem;min-height:44px}
+.dl-choice input{width:20px;height:20px;margin-top:2px;flex:none}
+.rd-deals{grid-column:1/-1;border-top:1px solid var(--line);padding-top:10px}
+.ckp h3{display:flex;align-items:center;gap:6px}
+.ck-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.ck{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-top:1px solid var(--line)}
+.ck:first-child{border-top:0}
+.ck-t{font-size:.88rem;font-weight:600}
+.ck.ok .ck-t{font-weight:500;color:var(--muted)}
+.ck-inv{display:flex;gap:6px}
+.ck-inv input{flex:1;min-width:0}
+@media (max-width:760px){.dl-cols{grid-template-columns:1fr}}
+
+.ask-fab{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:max(16px,env(safe-area-inset-bottom,0px));z-index:40;display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:0 18px;border-radius:999px;border:1px solid color-mix(in srgb,var(--internal) 50%,var(--line));background:var(--surface);color:var(--internal);font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.14);cursor:pointer}
+.ask-fab:hover{background:var(--internal-soft)}
+.ask-p{position:fixed;right:16px;bottom:16px;top:16px;width:min(420px,calc(100vw - 32px));z-index:45;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.22);display:flex;flex-direction:column;overflow:hidden}
+.ask-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.ask-hb{display:flex;align-items:center;gap:4px}
+.ask-hb .btn{min-height:40px}
+.ask-hb .btn[aria-pressed=true]{background:var(--internal-soft);color:var(--internal)}
+.ask-h .x{border:0;background:none;font-size:1.5rem;line-height:1;color:var(--muted);min-width:44px;min-height:44px;cursor:pointer}
+.ask-body{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.ask-m{max-width:92%;padding:10px 12px;border-radius:12px;font-size:.9rem;line-height:1.45;white-space:normal}
+.ask-m.q{align-self:flex-end;background:var(--internal-soft);color:var(--ink);white-space:pre-wrap}
+.ask-m.a{align-self:flex-start;background:var(--bg);border:1px solid var(--line)}
+.ask-m.busy{color:var(--muted);font-style:italic}
+.ask-b{margin-top:8px;font-size:.76rem;color:var(--muted)}
+.ask-empty{display:flex;flex-direction:column;gap:10px;color:var(--muted);font-size:.9rem}
+.ask-ex{display:flex;flex-direction:column;gap:6px}
+.ask-ex button{text-align:left;min-height:44px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);cursor:pointer}
+.ask-ex button:hover,.ask-hist button:hover{border-color:var(--internal)}
+.ask-hist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ask-hist button{width:100%;text-align:left;display:flex;flex-direction:column;gap:2px;min-height:44px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);cursor:pointer;font-size:.88rem}
+.ask-hist .muted{font-size:.76rem}
+.ask-f{display:flex;gap:8px;padding:10px 12px 4px;border-top:1px solid var(--line)}
+.ask-f textarea{flex:1;resize:none;min-height:48px;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--bg);color:var(--ink)}
+.ask-f .btn{min-height:48px}
+.ask-n{padding:0 12px 10px}
+@media (max-width:560px){.ask-p{inset:0;width:100%;border-radius:0}.ask-fab span{display:none}.ask-fab{padding:0 14px}}

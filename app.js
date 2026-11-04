@@ -168,7 +168,12 @@ function status(a,s,viewer){
   return st;
 }
 // Status of one slot as seen by a viewer (null = team)
-function status0(a,s,viewer){
+// Held while we negotiate: shown as taken to every other partner, without saying who
+function status0(a,s,viewer){const st=status0b(a,s,viewer);if(st.k!=="available")return st;const h=holdOf(a,s);if(!h)return st;
+  if(h.mine||(viewer&&viewer===h.who)){st.label="Held for you to "+fmtD(D(h.until));return st}
+  if(viewer===null)return {k:"reserved",label:"Held for "+h.who+" to "+fmtD(D(h.until)),who:h.note||"",held:false,nobid:true,hold:h};
+  return {k:"reserved",label:"Held to "+fmtD(D(h.until)),who:"",held:false,nobid:true}}
+function status0b(a,s,viewer){
   const fr=S.firstRefusal||{articles:[]};
   if(s.flag==="E") return {k:"taken",label:"Unavailable",who:s.prov+" · ongoing",held:true,paid:true};
   if(s.pos===1 && S.packages&&S.packages[a.name]){
@@ -222,7 +227,7 @@ async function load(){
   if(data.role==="team"){
     ROLE="team"; ME=data.me; applyTeamData(data);
     mode="team"; asProv=(PROVIDERS.find(p=>S.contracts[p.name])||PROVIDERS[0]||{name:"__new"}).name;
-    visStart=Date.now();render();teamTracking();track("visit",Object.assign(deviceInfo(),{team:true}));return;
+    visStart=Date.now();render();askMount();teamTracking();track("visit",Object.assign(deviceInfo(),{team:true}));return;
   }
   showPartner(data);
 }
@@ -230,7 +235,7 @@ function showPartner(data){
   MYNAME=data.name||"";
   ROLE="provider"; ME=data.provider; mode="prov"; asProv=ME;
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
-  ARTS=(data.articles||[]).map(a=>({name:a.name,region:a.region,grp:a.grp,p1:+a.p1,p2:+a.p2,slots:a.slots.map(s=>({pos:s.pos,prov:s.prov||"",exp:s.exp||"",flag:s.flag||""}))}));
+  ARTS=(data.articles||[]).map(a=>({name:a.name,region:a.region,grp:a.grp,p1:+a.p1,p2:+a.p2,slots:a.slots.map(s=>({pos:s.pos,prov:s.prov||"",exp:s.exp||"",flag:s.flag||"",hold:s.hold||"",holdTo:s.holdTo||""}))})); setHolds([]);
   TOTALS=data.totals; setRegions(); visStart=Date.now(); MYREGIONS=(data.regions&&data.regions.length)?data.regions:null; REVIEW_DONE=!!data.reviewDone; if(REVIEW_DONE)reviews=0;
   BIDS=data.bids||[]; NOBID=new Set(data.noBid||[]); POPULAR=data.popular||[];
   const lo=data.lastOffer;
@@ -250,7 +255,7 @@ function showPartner(data){
 async function startPreview(company){
   const {data,error}=await sb.rpc("partners_team_preview",{p_session:SESSION,p_provider:company==="__new"?"":company});
   if(error||!data){toast("Couldn't open the preview: "+(error?error.message:"no data"));return}
-  PREVIEW=true;resetSel();window.scrollTo({top:0});
+  PREVIEW=true;resetSel();window.scrollTo({top:0});const aw=$("askw");if(aw)aw.remove();
   if(company==="__new"){data.provider="";data.name=null}
   showPartner(data);
   if(company==="__new"){ME="__new";asProv="__new";render()}
@@ -263,7 +268,7 @@ function applyTeamData(data){
   S=Object.assign({},data.settings,{contracts:data.contracts||{}});
   SALES_FROM=data.salesFrom||null; PAYMENTS=data.payments||[]; SHOWN=data.shown||{};SHOWN_AT=data.shownAt||null; SCEN=data.scenarios||{};
   ARTS=(data.articles||[]).map(r=>({name:r.name,region:r.region,views:r.views,clicks:r.clicks,sales:r.sales||null,mon:parseMonthly(r.monthly),slots:[{pos:1,prov:r.p1_prov||"",exp:r.p1_exp||"",flag:r.p1_flag||""},{pos:2,prov:r.p2_prov||"",exp:r.p2_exp||"",flag:r.p2_flag||""}]}));
-  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=(data.activity||[]).filter(e=>!IGNORE_ACT.includes(String(e.email||"").toLowerCase())); TEAM_EV=data.teamActivity||[]; MON_TOT=null; INBOUND=data.inbound||[]; RES=data.results||null; POSRES=data.posres||null; MYREGIONS=null; REVIEWS=data.reviews||{}; REVIEW_DONE=false; PIPE=data.pipeline||[];
+  PROVIDERS=data.providers||[]; ACCESS=data.access||[]; REMS=data.reminders||{}; ACT_EV=(data.activity||[]).filter(e=>!IGNORE_ACT.includes(String(e.email||"").toLowerCase())); TEAM_EV=data.teamActivity||[]; MON_TOT=null; INBOUND=data.inbound||[]; RES=data.results||null; POSRES=data.posres||null; MYREGIONS=null; REVIEWS=data.reviews||{}; REVIEW_DONE=false; PIPE=data.pipeline||[]; DEALS=data.deals||[]; setHolds(data.holds); CHECKS=data.checks||[];
   offers=(data.offers||[]).map(o=>({id:o.id,from:o.provider,email:emailsOf(o.provider),when:fmtDT(o.created_at),items:o.items||[],list:+o.list||0,offer:+o.offer,note:o.note,status:o.status,kind:o.kind,action:o.status==="new"?null:o.action,counterAmt:o.counter_amt!=null?+o.counter_amt:null,draftText:o.status==="new"?null:o.draft_text,sent:o.status!=="new",decided:o.decided_at?fmtD(new Date(o.decided_at))+(o.decided_by?" by "+o.decided_by:""):""}));
   setRegions();
 }
@@ -315,12 +320,12 @@ function invoice(o){
     ${o.kind==="proposal"?"":`<tr><td colspan="3" class="muted">Difference</td><td class="num ${gap<0?"neg":""}">${gap<0?"−":""}${eur(Math.abs(gap))} · ${pct}% of price</td></tr>`}</tfoot></table></div>`;
 }
 const ACT={
-  accept:{label:"Accept",what:"Drafts a confirmation. Approving opens it in your email app, ready to send. Then add the slots to the Notion placements table and send the invoice. Each placement runs 12 months from going live."},
+  accept:{label:"Accept",what:"Drafts a confirmation. Approving opens it in your email app, ready to send. Then press Mark as agreed to record the deal here, and send the invoice. Each placement runs 12 months from going live."},
   counter:{label:"Counter",what:"Suggest a different price. Approving opens the reply in your email app. Hold the slots for them for 7 days while they decide."},
   decline:{label:"Decline",what:"Drafts a polite no and opens it in your email app. They can then send a new offer from their page."}
 };
 const ACT_BID={
-  accept:{label:"Accept",what:"Only once the current holder hasn't renewed. Drafts a confirmation to open in your email app. Then update the Notion placements table and send the invoice."},
+  accept:{label:"Accept",what:"Only once the current holder hasn't renewed. Drafts a confirmation to open in your email app. Then press Mark as agreed to record the deal here, and send the invoice."},
   counter:{label:"Counter",what:"Suggest a different price. Approving opens the reply in your email app."},
   decline:{label:"Decline",what:"Pick the reason (the holder renewed, or the offer is too low) and a polite no is drafted. The holder is never named."}
 };
@@ -374,6 +379,7 @@ function openMail(to,subject,body){
 function actionBlock(o,i){
   if(o.sent)return `<div class="done"><b>${{accept:"Accepted",counter:"Countered",decline:"Declined"}[o.action]||"Answered"}</b>${o.decided?" · "+esc(o.decided):""}${o.preview?' <span class="muted">Preview only, nothing was sent.</span>':""}</div>
     ${o.draftText?`<details><summary class="note" style="cursor:pointer">The reply we sent</summary><div class="draft" style="margin-top:6px">${esc(o.draftText)}</div></details>`:""}
+    ${o.action==="accept"&&!o.preview?(o.kind==="proposal"?`<p class="note">To record the contract, use Record a deal under Deals and holds, deal type Ubigi monthly contract.</p>`:(DEALS.some(d=>d.offer===o.id&&!d.endedAt)?`<div class="done"><b>Recorded as a deal</b></div>`:`<div class="acts"><button class="btn small primary" data-agree="${esc(o.id)}">Mark as agreed</button></div><p class="note">Opens Record a deal, filled in from this offer, so you can check the dates, prices and invoice. Nothing is saved until you press Record.</p>`)):""}
     <div class="acts"><button class="btn small ghost" data-undo="${i}">Move back to open</button></div>`;
   const AX=o.kind==="bid"?ACT_BID:ACT;
   if(!o.action)return `<div class="acts">${Object.entries(AX).map(([k,a])=>`<button class="btn small ${k==="accept"?"primary":k==="decline"?"ghost":""}" data-oa="${i}|${k}">${a.label}</button>`).join("")}</div>
@@ -738,7 +744,7 @@ function teamPanels(){
   const provs=Object.keys(byP).sort((x,y)=>byP[y].length-byP[x].length);
   const how=`<section class="panel internal"><div class="phead"><h2 class="dup">How this works<span class="tag-internal">Admin only</span></h2></div>
     <ol class="how">
-      <li><b>One master list</b><span>Who holds which slot comes from the Notion placements table. Prices and rules are edited here, under Prices and rules.</span></li>
+      <li><b>One master record</b><span>Who holds which slot, until when and at what price lives here. Record every deal with Record a deal or Mark as agreed, and hold slots while you negotiate. Before telling a provider what's open, check here. Notion is a copy refreshed every morning, so don't edit it there. Prices and rules are edited under Prices and rules.</span></li>
       <li><b>Sign in by email</b><span>Give someone access with their name, email and role. Partners sign in at partners.nomadwise.io and see open slots, prices and their own placements, never other providers' names, prices or per-article numbers.</span></li>
       <li><b>They pick and offer</b><span>Providers tick slots and add-ons, see the list total, and send one package offer. No auction, no automatic replies.</span></li>
       <li><b>We decide</b><span>Offers land in the inbox here. Accept, counter or decline drafts a reply. Nothing is sent until one of us approves it, and approving opens it in your email app. We aim to reply within 2 working days.</span></li>
@@ -884,7 +890,7 @@ function teamPanels(){
     ${order.filter(n=>cg[n]).map(n=>`<tr><td><b>${esc(n)}</b></td><td class="mono">${cnt[n]}</td><td class="mono">${eur(cg[n][1])}</td><td class="mono">${eur(cg[n][2])}</td><td class="mono">${eur(cg[n][1]+cg[n][2])}</td></tr>`).join("")}
     <tr><td><b>Open now</b></td><td></td><td class="mono">${eur(openT[1])}</td><td class="mono">${eur(openT[2])}</td><td class="mono">${eur(openT[1]+openT[2])}</td></tr></tbody></table></div>
     <p class="note">Contract deals are priced separately, so actual revenue on those slots differs from list.</p></section>`;
-  return `<p class="note" style="margin-top:-8px">Two things need us: offers and renewals. Everything else is folded away below.</p>`+inbox+ren+fold("d-pb","Proposal builder",pbPanel())+fold("d-act",activityTitle(),activityPanel())+(TEAM_EV.length?fold("d-team","Team activity <span class=\"muted\" style=\"font-weight:500;font-size:.9rem\">· only you see this</span>",`<section class="panel"><div class="queue">${teamActivityPanel()}</div></section>`):"")+fold("d-how","How this works",how)+fold("d-num","Inventory and capacity",kpi+cap)+fold("d-pr","Prices and rules",prices)+fold("d-acc","Who has access",acc);
+  return `<p class="note" style="margin-top:-8px">Offers, deals and renewals need us. Everything else is folded away below.</p>`+inbox+dealsPanel()+ren+fold("d-pb","Proposal builder",pbPanel())+fold("d-act",activityTitle(),activityPanel())+(TEAM_EV.length?fold("d-team","Team activity <span class=\"muted\" style=\"font-weight:500;font-size:.9rem\">· only you see this</span>",`<section class="panel"><div class="queue">${teamActivityPanel()}</div></section>`):"")+fold("d-how","How this works",how)+fold("d-num","Inventory and capacity",kpi+cap)+fold("d-pr","Prices and rules",prices)+fold("d-acc","Who has access",acc);
 }
 
 
@@ -1099,6 +1105,271 @@ function plBind(){
     if(await plSave(fe.dataset.plid,row)){PEDIT=null;toast("Saved");render()}});
 }
 
+// ---------- one master record: deals, holds, checks (admin only) ----------
+let DEALS=[], HOLDL=[], HOLDS={}, CHECKS=[], DF=null, HF=null, DEND=null, HREL=null, CKOPEN=false, CKINV={};
+const DTYPES=["Paid exclusive","Ubigi monthly contract"];
+const plOf=p=>+p===1?"1st":"2nd";
+const addYear=s=>{const d=D(s);const y=new Date(d);y.setFullYear(d.getFullYear()+1);return isoD(y)};
+const dmy=s=>s?fmtD(D(String(s).slice(0,10))):"";
+function setHolds(list){HOLDL=list||[];HOLDS={};HOLDL.forEach(h=>{HOLDS[h.a+"|"+h.pos]=h})}
+// Who holds a slot during a negotiation (team: from the hold list; partners: from their page data)
+function holdOf(a,s){
+  if(s.hold)return s.hold==="mine"?{mine:true,until:s.holdTo}:{who:"other",until:s.holdTo};
+  if(ROLE!=="team"||PREVIEW)return null;
+  const h=HOLDS[a.name+"|"+s.pos];return h?{who:h.p,until:h.until,note:h.note,id:h.id}:null}
+// What the team sees about a slot right now, in one short line (used by the deal and hold forms)
+function slotNow(name,pos){const a=ARTS.find(x=>x.name===name);if(!a)return {t:"Not one of our guides",bad:true};
+  const s=a.slots[pos-1],h=HOLDS[name+"|"+pos];
+  if(s.flag==="E")return {t:s.prov+" · ongoing deal",bad:true,prov:s.prov};
+  if(s.prov&&s.exp){const d=days(D(s.exp),TODAY);
+    if(d>=0)return {t:s.prov+" to "+fmtD(D(s.exp)),bad:true,prov:s.prov};
+    if(d>=-60){const x=D(s.exp);x.setDate(x.getDate()+60);return {t:"In renewal for "+s.prov+" to "+fmtD(x),warn:true,prov:s.prov}}}
+  if(h)return {t:"Held for "+h.p+" to "+dmy(h.until),hold:h};
+  return {t:"Open"+(pos===1&&frActive(a,s)?" · "+frActive(a,s)+" first refusal":(pos===1?" · Ubigi gets first say":"")),open:true}}
+
+// ----- Record a deal -----
+function dfNew(o){const t=isoD(TODAY);return Object.assign({provider:"",newCo:"",type:"Paid exclusive",start:t,end:addYear(t),invoice:"",invOn:t,note:"",items:[],offer:null,addName:"",addPos:1,err:"",busy:false},o||{})}
+function dfAdd(names,pos){const added=[],skipped=[];
+  names.forEach(n0=>{const a=ARTS.find(x=>x.name.toLowerCase()===n0.trim().toLowerCase());if(!a){if(n0.trim())skipped.push(n0.trim());return}
+    famOf(a.name).forEach(n=>{if(DF.items.some(x=>x.article===n&&x.pos===pos))return;const ar=ARTS.find(x=>x.name===n);if(!ar)return;
+      DF.items.push({article:n,pos,price:priceOf(ar,pos),list:priceOf(ar,pos)});added.push(n)})});
+  if(skipped.length)toast("Not one of our guides: "+skipped.join(", "));
+  else if(added.length>1&&names.length===1)toast(added.join(", ")+" go together, so all "+added.length+" were added");}
+function dfFromOffer(o){const items=[],skip=[];let listT=0;
+  o.items.forEach(it=>{const m=String(it).match(/^(.*?) · (1st|2nd)(?: · to (\d{4}-\d{2}-\d{2}))?$/);const a=m&&ARTS.find(x=>x.name===m[1]);
+    if(!a){skip.push(String(it));return}const pos=m[2]==="1st"?1:2,lp=m[3]?proRata(a,pos,D(m[3])):priceOf(a,pos);listT+=lp;items.push({article:a.name,pos,list:lp,until:m[3]||null})});
+  const f=listT?o.offer/listT:1;items.forEach(x=>{x.price=Math.round(x.list*f);if(x.until)x.end=x.until});
+  DF=dfNew({provider:o.from,items,offer:o.id,note:"From "+o.from+"'s offer of "+eur(o.offer)+" on "+o.when});
+  if(skip.length)DF.skipNote=skip.join(", ")+(skip.length===1?" isn't a placement, so it isn't":" aren't placements, so they aren't")+" recorded here."}
+function dfEnd(x){return x.end||DF.end}
+function dealForm(){const F=DF,provs=PROVIDERS.map(p=>p.name);const pv=F.provider==="__new"?F.newCo.trim():F.provider;
+  const tot=F.items.reduce((t,x)=>t+(+x.price||0),0);
+  const warn=[],bad=[],fr=[];F.items.forEach(x=>{const n=slotNow(x.article,x.pos);
+    if(n.bad&&n.prov!==pv)bad.push(x.article+" "+plOf(x.pos)+": "+n.t);
+    else if(n.hold&&n.hold.p!==pv)bad.push(x.article+" "+plOf(x.pos)+": "+n.t);
+    else if(n.warn&&n.prov!==pv)warn.push(x.article+" "+plOf(x.pos)+": "+n.t+". Only go ahead if they've said no.");
+    if(x.pos===1&&n.open&&pv&&pv!=="Ubigi"&&ARTS.some(a=>a.slots[0].prov==="Ubigi"&&holdsNow(a.slots[0])))fr.push(x.article)});
+  if(fr.length)warn.push("Ubigi gets first say on open 1st positions ("+fr.slice(0,8).join(", ")+(fr.length>8?" and "+(fr.length-8)+" more":"")+"). Check they've had the chance.");
+  const uniqW=[...new Set(warn)];
+  const c=S.contracts.Ubigi,cList=c?[...new Set((c.edit&&c.edit.on?(c.edit.keep||[]).concat(c.edit.add||[]):(c.exclusive||[])))]:[];
+  const label=`Record ${F.items.length} ${F.items.length===1?"placement":"placements"}${pv?" for "+esc(pv):""}`;
+  return `<div class="dl-form" id="df">
+    <div class="dl-step"><span class="dl-n">Step 1 of 3</span><h3>Who and which guides</h3>
+      <div class="dl-row"><label class="fl">Partner company<select id="df-prov"><option value="" ${F.provider?"":"selected"} disabled>Pick the partner</option>${provs.map(p=>`<option ${F.provider===p?"selected":""}>${esc(p)}</option>`).join("")}<option value="__new" ${F.provider==="__new"?"selected":""}>New partner company…</option></select></label>
+        ${F.provider==="__new"?`<label class="fl">Company name<input id="df-newco" value="${esc(F.newCo)}" placeholder="e.g. Airalo"></label>`:""}</div>
+      <div class="dl-add"><label class="fl">Add guides<input id="df-add" list="int-arts" value="${esc(F.addName)}" placeholder="Type a guide, or paste several separated by commas"></label>
+        <label class="fl">Position<select id="df-pos"><option value="1" ${F.addPos===1?"selected":""}>1st</option><option value="2" ${F.addPos===2?"selected":""}>2nd</option></select></label>
+        <button class="btn" type="button" id="df-addb">Add</button></div>
+      ${F.type==="Ubigi monthly contract"&&cList.length?`<button class="lnk" type="button" id="df-ubigi">Add the ${cList.length} guides in Ubigi's contract proposal, 1st</button>`:""}
+      <p class="note">A country and its cities go together, so adding one adds the rest of its family.</p>
+      ${F.items.length?`<div class="scroll"><table class="tbl dl-tbl"><thead><tr><th>Guide</th><th>Position</th><th>Now</th><th class="num">Price €</th><th>Ends</th><th></th></tr></thead><tbody>
+        ${F.items.map((x,i)=>{const n=slotNow(x.article,x.pos);const cls=(n.bad||n.hold)&&n.prov!==pv&&!(n.hold&&n.hold.p===pv)?"bad":(n.warn&&n.prov!==pv?"warn":"");
+          return `<tr><td><b>${esc(x.article)}</b></td><td>${plOf(x.pos)}</td><td class="dl-now ${cls}">${esc(n.t)}</td>
+          <td class="num"><input type="number" min="0" step="1" data-dfp="${i}" value="${x.price}" aria-label="Price for ${esc(x.article)}"></td>
+          <td><input type="date" data-dfe="${i}" value="${esc(dfEnd(x))}" aria-label="End date for ${esc(x.article)}"></td>
+          <td><button class="x" type="button" data-dfx="${i}" aria-label="Remove ${esc(x.article)}">×</button></td></tr>`}).join("")}
+        </tbody><tfoot><tr><td colspan="3"><b>Total</b></td><td class="num mono"><b>${eur(tot)}</b></td><td colspan="2"></td></tr></tfoot></table></div>`:`<p class="muted" style="font-size:.9rem">No guides yet.</p>`}
+      ${F.skipNote?`<p class="note">${esc(F.skipNote)}</p>`:""}</div>
+    <div class="dl-step"><span class="dl-n">Step 2 of 3</span><h3>Dates, price and invoice</h3>
+      <div class="dl-row"><label class="fl">Deal type<select id="df-type">${DTYPES.map(t=>`<option ${F.type===t?"selected":""}>${t}</option>`).join("")}</select></label>
+        <label class="fl">Starts<input type="date" id="df-start" value="${esc(F.start)}"></label>
+        <label class="fl">Ends<input type="date" id="df-end" value="${esc(F.end)}"></label></div>
+      <p class="note">Ends defaults to 12 months after the start and applies to every guide unless you change one in the table. Prices are per guide for the whole term.</p>
+      <div class="dl-row"><label class="fl"><span>Invoice number <span class="muted">(optional for now)</span></span><input id="df-inv" value="${esc(F.invoice)}" placeholder="e.g. #41"></label>
+        <label class="fl">Invoice date<input type="date" id="df-invon" value="${esc(F.invOn)}"></label></div>
+      <label class="fl"><span>Note <span class="muted">(optional)</span></span><input id="df-note" value="${esc(F.note)}" placeholder="e.g. agreed by email with Simon"></label></div>
+    <div class="dl-step"><span class="dl-n">Step 3 of 3</span><h3>Check and record</h3>
+      ${F.items.length&&pv?`<p><b>${F.items.length} ${F.items.length===1?"placement":"placements"} for ${esc(pv)}</b>, ${eur(tot)} in total, ${esc(F.type.toLowerCase())}, from ${dmy(F.start)}.</p>`:`<p class="muted">Pick the partner and add at least one guide.</p>`}
+      ${bad.length?`<div class="dl-msg bad"><b>These can't be recorded yet:</b><ul>${bad.map(t=>`<li>${esc(t)}</li>`).join("")}</ul></div>`:""}
+      ${uniqW.length?`<div class="dl-msg warn"><ul>${uniqW.slice(0,6).map(t=>`<li>${esc(t)}</li>`).join("")}</ul></div>`:""}
+      ${!F.invoice.trim()&&F.type==="Paid exclusive"&&F.items.length?`<p class="note">No invoice number yet: these show under Needs checking as "no invoice found" until you add it.</p>`:""}
+      ${F.err?`<div class="dl-msg bad">${esc(F.err)}</div>`:""}
+      <p class="note">Saves straight away. These slots then show as taken to every other partner, and Notion copies it the next morning. Nothing is emailed.</p>
+      <div class="acts"><button class="btn primary" type="button" id="df-go" ${F.items.length&&pv&&!F.busy&&!bad.length?"":"disabled"}>${F.busy?"Recording…":(bad.length?"Sort out the guides above first":label)}</button><button class="btn ghost" type="button" id="df-cancel">Cancel</button></div></div></div>`}
+async function dfSubmit(){const F=DF;const pv=F.provider==="__new"?F.newCo.trim():F.provider;
+  if(!pv){F.err="Pick the partner company.";render();return}
+  F.busy=true;F.err="";render();
+  const items=F.items.map(x=>({article:x.article,pos:x.pos,start:F.start,end:dfEnd(x),price:x.price===""?null:+x.price,list:x.list}));
+  const {data,error}=await sb.rpc("partners_team_deal",{p_session:SESSION,p_deal:{provider:pv,deal_type:F.type,invoice:F.invoice,invoiced_on:F.invOn,offer_id:F.offer,note:F.note,items}});
+  F.busy=false;
+  if(error){F.err=error.message;render();const m=document.querySelector(".dl-msg.bad");if(m)m.scrollIntoView({behavior:"smooth",block:"center"});return}
+  toast("Recorded "+data.recorded+" "+(data.recorded===1?"placement":"placements")+" for "+pv);DF=null;reloadTeam()}
+
+// ----- Hold a slot -----
+function hfNew(o){const d=new Date(TODAY);d.setDate(d.getDate()+7);return Object.assign({provider:"",article:"",pos:1,until:isoD(d),note:"",err:"",busy:false},o||{})}
+function holdForm(){const F=HF;const a=ARTS.find(x=>x.name.toLowerCase()===F.article.trim().toLowerCase());const fam=a?famOf(a.name):[];
+  const n=a?slotNow(a.name,F.pos):null;const mx=new Date(TODAY);mx.setDate(mx.getDate()+60);
+  return `<div class="dl-form" id="hf">
+    <div class="dl-step"><span class="dl-n">Step 1 of 2</span><h3>What to hold, and for whom</h3>
+      <div class="dl-row"><label class="fl">Partner company<select id="hf-prov"><option value="" ${F.provider?"":"selected"} disabled>Pick the partner</option>${PROVIDERS.map(p=>`<option ${F.provider===p.name?"selected":""}>${esc(p.name)}</option>`).join("")}</select></label>
+        <label class="fl">Guide<input id="hf-art" list="int-arts" value="${esc(F.article)}" placeholder="e.g. Japan"></label>
+        <label class="fl">Position<select id="hf-pos"><option value="1" ${F.pos===1?"selected":""}>1st</option><option value="2" ${F.pos===2?"selected":""}>2nd</option></select></label></div>
+      ${a?`<p class="note">Now: ${esc(n.t)}.${fam.length>1?" "+esc(fam.join(", "))+" go together, so all "+fam.length+" are held.":""}</p>`:""}</div>
+    <div class="dl-step"><span class="dl-n">Step 2 of 2</span><h3>Until when</h3>
+      <div class="dl-row"><label class="fl">Hold until<input type="date" id="hf-until" value="${esc(F.until)}" min="${isoD(TODAY)}" max="${isoD(mx)}"></label>
+        <label class="fl"><span>Note <span class="muted">(optional)</span></span><input id="hf-note" value="${esc(F.note)}" placeholder="e.g. waiting for their budget sign-off"></label></div>
+      ${F.err?`<div class="dl-msg bad">${esc(F.err)}</div>`:""}
+      <p class="note">Other partners see it as taken until then, without seeing who. It lapses by itself on that date, up to 60 days ahead. Nothing is emailed.</p>
+      <div class="acts"><button class="btn primary" type="button" id="hf-go" ${a&&F.provider&&!F.busy?"":"disabled"}>${F.busy?"Holding…":`Hold ${a?esc(a.name)+" "+plOf(F.pos):"the slot"}${F.provider?" for "+esc(F.provider):""} until ${dmy(F.until)}`}</button><button class="btn ghost" type="button" id="hf-cancel">Cancel</button></div></div></div>`}
+
+// ----- End early or correct a mistake -----
+function endPanel(d){const E=DEND;const pl=plOf(d.pos);
+  return `<div class="dl-end"><div role="radiogroup" aria-label="What happened" class="dl-choice">
+      <label class="chk"><input type="radio" name="de-how" value="early" ${E.how==="early"?"checked":""}> <span><b>End it now and open the slot</b><br><span class="note">For a partner stopping early. The slot opens to every partner straight away. The deal stays in the history.</span></span></label>
+      <label class="chk"><input type="radio" name="de-how" value="mistake" ${E.how==="mistake"?"checked":""}> <span><b>Correct a mistake</b><br><span class="note">For a deal recorded by mistake. The slot goes back to how it was before. The deal stays in the history, marked as a mistake${d.inv?", and its invoice line is removed":""}.</span></span></label></div>
+    <label class="fl"><span>Why <span class="muted">(optional)</span></span><input id="de-why" value="${esc(E.why||"")}" placeholder="e.g. wrong partner picked"></label>
+    ${E.err?`<div class="dl-msg bad">${esc(E.err)}</div>`:""}
+    <div class="acts"><button class="btn primary" type="button" id="de-go" ${E.how?"":"disabled"}>${E.how==="mistake"?`Undo the deal on ${esc(d.a)} ${pl}`:(E.how==="early"?`End ${esc(d.a)} ${pl} for ${esc(d.p)} now`:"Pick one above")}</button><button class="btn ghost" type="button" id="de-cancel">Cancel</button></div></div>`}
+function dealLine(d,withEnd){const ended=d.endedAt;const open=DEND&&DEND.id===d.id;
+  return `<li class="dl-li${ended?" ended":""}"><div class="dl-li-h"><span><b>${esc(d.a)} ${plOf(d.pos)}</b> · ${esc(d.p)} <span class="muted">${dmy(d.start)} to ${dmy(d.end)}${d.price!=null?" · "+eur(d.price):""}${d.inv?" · invoice "+esc(d.inv):""}${d.type!=="Paid exclusive"?" · "+esc(d.type):""}</span></span>
+    ${ended?`<span class="pill ${d.how==="mistake"?"due":"soon"}">${d.how==="mistake"?"Corrected":"Ended early"} ${dmy(d.endedAt)}</span>`:(withEnd?`<button class="btn small ghost" data-dend="${esc(d.id)}">${open?"Close":"End or correct"}</button>`:"")}</div>
+    <div class="note">${d.src==="backfill"?"Loaded from the existing list on "+dmy(d.at):"Recorded by "+esc(d.by||"")+" on "+dmy(d.at)}${d.note&&d.src!=="backfill"?" · "+esc(d.note):""}${ended&&d.why?" · "+esc(d.why):""}</div>
+    ${open?endPanel(d):""}</li>`}
+function dealsPanel(){
+  const recent=DEALS.filter(d=>d.src!=="backfill"&&(!d.endedAt||days(TODAY,new Date(d.endedAt))<=30)).slice(0,25);
+  return `<section class="panel internal" id="deals"><div class="phead"><div><h2>Deals and holds<span class="tag-internal">Admin only</span></h2>
+      <p class="note" style="margin:4px 0 0;max-width:640px">This page is the record of who holds what. Before telling a provider what's open, check here. Record every deal agreed by email or call, and hold slots while you negotiate. Notion copies it every morning.</p></div>
+      <div class="acts"><button class="btn ${DF?"ghost":"primary"}" id="dl-new">${DF?"Close":"+ Record a deal"}</button><button class="btn ${HF?"ghost":""}" id="hl-new">${HF?"Close":"Hold a slot"}</button></div></div>
+    ${DF?dealForm():""}${HF?holdForm():""}
+    <div class="dl-cols"><div><h3 class="acc-h">Held while we negotiate · ${HOLDL.length}</h3>
+      ${HOLDL.length?`<ul class="dl-list">${HOLDL.map(h=>`<li class="dl-li"><div class="dl-li-h"><span><b>${esc(h.a)} ${plOf(h.pos)}</b> · held for ${esc(h.p)} <span class="muted">to ${dmy(h.until)}${h.note?" · "+esc(h.note):""}</span></span>
+        ${HREL===h.id?`<span class="acts"><button class="btn small primary" data-hrelgo="${esc(h.id)}">Release hold</button><button class="btn small ghost" data-hrel="">Keep it</button></span>`:`<button class="btn small ghost" data-hrel="${esc(h.id)}">Release</button>`}</div>
+        ${HREL===h.id?`<div class="note">Release the hold on ${esc(h.a)} ${plOf(h.pos)} for ${esc(h.p)}? It shows as open to every partner straight away.</div>`:""}</li>`).join("")}</ul>`:`<p class="muted" style="font-size:.9rem">Nothing held.</p>`}</div>
+      <div><h3 class="acc-h">Recorded recently · ${recent.length}</h3>
+      ${recent.length?`<ul class="dl-list">${recent.map(d=>dealLine(d,true)).join("")}</ul>`:`<p class="muted" style="font-size:.9rem">No deals recorded here yet. Every slot that was already paid has been loaded from the existing list; tap a guide name below to see its deals.</p>`}</div></div></section>`}
+// Under an expanded guide row: its deals and holds, with the actions
+function rowDeals(a){const L=DEALS.filter(d=>d.a===a.name).slice(0,8);
+  const acts=[1,2].map(pos=>{const n=slotNow(a.name,pos);
+    return n.open?`<button class="btn small" data-hold1="${esc(a.name)}|${pos}">Hold ${plOf(pos)}</button><button class="btn small" data-deal1="${esc(a.name)}|${pos}">Record a deal for ${plOf(pos)}</button>`:""}).join("");
+  return `<div class="rd-col rd-deals"><span class="eyebrow">Deals on this guide</span>
+    ${L.length?`<ul class="dl-list">${L.map(d=>dealLine(d,true)).join("")}</ul>`:'<div class="muted">None recorded</div>'}
+    ${acts?`<div class="acts">${acts}</div>`:""}</div>`}
+
+// ----- Needs checking (rail) -----
+function checksPanel(){const open=CHECKS.filter(c=>!c.ok),done=CHECKS.filter(c=>c.ok);
+  const item=c=>`<li class="ck"><div class="ck-t">${esc(c.title)}</div><div class="note">${esc(c.fix)}</div>
+    ${c.kind==="noinv"&&c.deal?`<div class="ck-inv"><input id="ckinv-${esc(c.deal)}" value="${esc(CKINV[c.deal]||"")}" placeholder="Invoice number" aria-label="Invoice number for ${esc(c.article)}"><button class="btn small" data-ckinv="${esc(c.deal)}">Add invoice</button></div>`:""}
+    <div class="acts">${(c.kind==="invslot"||c.kind==="changed")&&c.article&&c.pos?`<button class="btn small" data-ckdeal="${esc(c.article)}|${c.pos}|${esc(c.provider||"")}">Record a deal</button>`:""}
+      <button class="btn small ghost" data-ckok="${esc(c.key)}">Mark as checked</button></div></li>`;
+  return `<section class="panel internal ckp"><div class="phead"><h3>Needs checking <span class="${open.length?"pl-badge":"muted"}">${open.length}</span></h3></div>
+    ${open.length?`<ul class="ck-list">${open.slice(0,CKOPEN?200:6).map(item).join("")}</ul>${open.length>6?`<button class="lnk" id="ck-more">${CKOPEN?"Show fewer":"Show all "+open.length}</button>`:""}`:`<p class="note">Nothing to check. Paid slots, invoices and the live pages agree.</p>`}
+    ${done.length?`<details id="ck-done" ${openD.has("ck-done")?"open":""}><summary class="note" style="cursor:pointer">Checked · ${done.length}</summary><ul class="ck-list">${done.map(c=>`<li class="ck ok"><div class="ck-t">${esc(c.title)}</div><div class="note">Checked by ${esc(c.okBy||"")} ${dmy(c.okAt)}${c.okNote?" · "+esc(c.okNote):""}</div><div class="acts"><button class="btn small ghost" data-ckundo="${esc(c.key)}">Undo</button></div></li>`).join("")}</ul></details>`:""}
+    <p class="note">Updated with the data each time the page loads. Fixed items drop off by themselves.</p></section>`}
+
+function mrBind(){
+  const on=(id,ev,fn)=>{const e=$(id);if(e)e.addEventListener(ev,fn)};
+  on("dl-new","click",()=>{DF=DF?null:dfNew();HF=null;render();if(DF)$("df").scrollIntoView({behavior:"smooth",block:"start"})});
+  on("hl-new","click",()=>{HF=HF?null:hfNew();DF=null;render();if(HF)$("hf").scrollIntoView({behavior:"smooth",block:"start"})});
+  if(DF){
+    on("df-prov","change",e=>{DF.provider=e.target.value;render()});
+    on("df-newco","input",e=>{DF.newCo=e.target.value});on("df-newco","change",()=>render());
+    on("df-add","input",e=>{DF.addName=e.target.value});
+    on("df-add","keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("df-addb").click()}});
+    on("df-pos","change",e=>{DF.addPos=+e.target.value});
+    on("df-addb","click",()=>{const names=DF.addName.split(/[,;\n]/).map(s=>s.trim()).filter(Boolean);if(!names.length){toast("Type a guide name");return}
+      dfAdd(names,DF.addPos);DF.addName="";render();const i=$("df-add");if(i)i.focus()});
+    on("df-ubigi","click",()=>{const c=S.contracts.Ubigi;const L=[...new Set(c.edit&&c.edit.on?(c.edit.keep||[]).concat(c.edit.add||[]):(c.exclusive||[]))];
+      dfAdd(L,1);DF.items.forEach(x=>{if(x.pos===1&&L.includes(x.article))x.price=Math.round((+c.base||0)*12/L.length)});render()});
+    document.querySelectorAll("[data-dfp]").forEach(el=>el.addEventListener("change",()=>{DF.items[+el.dataset.dfp].price=el.value;render()}));
+    document.querySelectorAll("[data-dfe]").forEach(el=>el.addEventListener("change",()=>{DF.items[+el.dataset.dfe].end=el.value||null;render()}));
+    document.querySelectorAll("[data-dfx]").forEach(el=>el.addEventListener("click",()=>{DF.items.splice(+el.dataset.dfx,1);render()}));
+    on("df-type","change",e=>{DF.type=e.target.value;if(DF.type==="Ubigi monthly contract"&&!DF.provider)DF.provider="Ubigi";render()});
+    on("df-start","change",e=>{const was=DF.end===addYear(DF.start);DF.start=e.target.value;if(was&&DF.start)DF.end=addYear(DF.start);render()});
+    on("df-end","change",e=>{DF.end=e.target.value;render()});
+    on("df-inv","input",e=>{DF.invoice=e.target.value});on("df-inv","change",()=>render());
+    on("df-invon","change",e=>{DF.invOn=e.target.value});
+    on("df-note","input",e=>{DF.note=e.target.value});
+    on("df-go","click",dfSubmit);
+    on("df-cancel","click",()=>{DF=null;render()});
+  }
+  if(HF){
+    on("hf-prov","change",e=>{HF.provider=e.target.value;render()});
+    on("hf-art","change",e=>{HF.article=e.target.value;render()});
+    on("hf-pos","change",e=>{HF.pos=+e.target.value;render()});
+    on("hf-until","change",e=>{HF.until=e.target.value;render()});
+    on("hf-note","input",e=>{HF.note=e.target.value});
+    on("hf-cancel","click",()=>{HF=null;render()});
+    on("hf-go","click",async()=>{const a=ARTS.find(x=>x.name.toLowerCase()===HF.article.trim().toLowerCase());if(!a)return;HF.busy=true;HF.err="";render();
+      const {data,error}=await sb.rpc("partners_team_hold",{p_session:SESSION,p_id:null,p_row:{provider:HF.provider,article:a.name,pos:HF.pos,until:HF.until,note:HF.note}});
+      HF.busy=false;if(error){HF.err=error.message;render();return}
+      toast("Held "+data.held+" "+(data.held===1?"slot":"slots")+" for "+HF.provider+" until "+dmy(HF.until));HF=null;reloadTeam()});
+  }
+  document.querySelectorAll("[data-hrel]").forEach(el=>el.addEventListener("click",()=>{HREL=el.dataset.hrel||null;render()}));
+  document.querySelectorAll("[data-hrelgo]").forEach(el=>el.addEventListener("click",async()=>{
+    const {error}=await sb.rpc("partners_team_hold",{p_session:SESSION,p_id:el.dataset.hrelgo,p_row:{why:"Released"}});
+    if(error){toast("Couldn't release: "+error.message);return}HREL=null;toast("Hold released");reloadTeam()}));
+  document.querySelectorAll("[data-dend]").forEach(el=>el.addEventListener("click",()=>{DEND=DEND&&DEND.id===el.dataset.dend?null:{id:el.dataset.dend,how:"",why:""};render()}));
+  if(DEND){
+    document.querySelectorAll("input[name=de-how]").forEach(el=>el.addEventListener("change",()=>{DEND.how=el.value;const w=$("de-why");if(w)DEND.why=w.value;render()}));
+    on("de-why","input",e=>{DEND.why=e.target.value});
+    on("de-cancel","click",()=>{DEND=null;render()});
+    on("de-go","click",async()=>{if(!DEND.how)return;const {error}=await sb.rpc("partners_team_deal_end",{p_session:SESSION,p_id:DEND.id,p_how:DEND.how,p_reason:DEND.why||""});
+      if(error){DEND.err=error.message;render();return}toast(DEND.how==="mistake"?"Deal undone. The slot is back to how it was.":"Ended. The slot is open now.");DEND=null;reloadTeam()});
+  }
+  document.querySelectorAll("[data-hold1]").forEach(el=>el.addEventListener("click",()=>{const [n,p]=el.dataset.hold1.split("|");HF=hfNew({article:n,pos:+p});DF=null;TVIEW="place";render();const f=$("hf");if(f)f.scrollIntoView({behavior:"smooth",block:"start"})}));
+  document.querySelectorAll("[data-deal1]").forEach(el=>el.addEventListener("click",()=>{const [n,p]=el.dataset.deal1.split("|");DF=dfNew();dfAdd([n],+p);HF=null;render();const f=$("df");if(f)f.scrollIntoView({behavior:"smooth",block:"start"})}));
+  document.querySelectorAll("[data-agree]").forEach(el=>el.addEventListener("click",()=>{const o=offers.find(x=>x.id===el.dataset.agree);if(!o)return;dfFromOffer(o);HF=null;render();const f=$("df");if(f)f.scrollIntoView({behavior:"smooth",block:"start"})}));
+  // checks
+  on("ck-more","click",()=>{CKOPEN=!CKOPEN;render()});
+  const cd=$("ck-done");if(cd)cd.addEventListener("toggle",()=>{if(cd.open)openD.add("ck-done");else openD.delete("ck-done")});
+  document.querySelectorAll("[data-ckok]").forEach(el=>el.addEventListener("click",async()=>{const k=el.dataset.ckok;const c=CHECKS.find(x=>x.key===k);
+    const {error}=await sb.rpc("partners_team_check",{p_session:SESSION,p_key:k,p_ok:true,p_note:""});if(error){toast("Couldn't save: "+error.message);return}
+    if(c){c.ok=true;c.okBy=ME;c.okAt=new Date().toISOString()}toast("Marked as checked");render()}));
+  document.querySelectorAll("[data-ckundo]").forEach(el=>el.addEventListener("click",async()=>{const k=el.dataset.ckundo;const c=CHECKS.find(x=>x.key===k);
+    const {error}=await sb.rpc("partners_team_check",{p_session:SESSION,p_key:k,p_ok:false,p_note:""});if(error){toast("Couldn't save: "+error.message);return}
+    if(c)c.ok=false;render()}));
+  document.querySelectorAll("[id^=ckinv-]").forEach(el=>el.addEventListener("input",()=>{CKINV[el.id.slice(6)]=el.value}));
+  document.querySelectorAll("[data-ckinv]").forEach(el=>el.addEventListener("click",async()=>{const id=el.dataset.ckinv,v=(CKINV[id]||"").trim();if(!v){toast("Type the invoice number");return}
+    const {error}=await sb.rpc("partners_team_deal_invoice",{p_session:SESSION,p_id:id,p_invoice:v,p_on:isoD(TODAY)});if(error){toast(error.message);return}
+    delete CKINV[id];toast("Invoice "+v+" added");reloadTeam()}));
+  document.querySelectorAll("[data-ckdeal]").forEach(el=>el.addEventListener("click",()=>{const [n,p,pv]=el.dataset.ckdeal.split("|");
+    DF=dfNew({provider:PROVIDERS.some(x=>x.name===pv)?pv:""});dfAdd([n],+p);HF=null;TVIEW="place";render();const f=$("df");if(f)f.scrollIntoView({behavior:"smooth",block:"start"})}));
+}
+
+// ---------- Ask me anything (team only) ----------
+const ASK={open:false,view:"chat",chat:null,msgs:[],busy:false,hist:null,err:""};
+const newChatId=()=>(crypto.randomUUID?crypto.randomUUID():"xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx".replace(/x/g,()=>(Math.random()*16|0).toString(16)));
+const ASK_EX=["What's open in 1st in our Asia guides?","When does Holafly's 2nd on Japan end?","Which paid slots have no invoice?","Who is in renewal right now?"];
+function askMount(){if(ROLE!=="team"||PREVIEW||$("askw"))return;
+  const w=document.createElement("div");w.id="askw";document.body.appendChild(w);
+  w.addEventListener("click",askClick);w.addEventListener("keydown",e=>{if(e.target.id==="ask-q"&&e.key==="Enter"&&!e.shiftKey){e.preventDefault();askSend()}});
+  w.addEventListener("input",e=>{if(e.target.id==="ask-q")ASK.draft=e.target.value});
+  askRender()}
+function askRender(){const w=$("askw");if(!w)return;
+  if(!ASK.open){w.innerHTML=`<button class="ask-fab" data-ask="open" aria-label="Ask me anything about the portal"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2l1.9 5.6L19.5 9.5l-5.6 1.9L12 17l-1.9-5.6L4.5 9.5l5.6-1.9zM19 14l.9 2.6 2.6.9-2.6.9L19 21l-.9-2.6-2.6-.9 2.6-.9z"/></svg><span>Ask me anything</span></button>`;return}
+  const chats={};(ASK.hist||[]).forEach(r=>{(chats[r.chat]=chats[r.chat]||[]).push(r)});
+  const hist=Object.values(chats).sort((a,b)=>String(b[b.length-1].at).localeCompare(String(a[a.length-1].at)));
+  const body=ASK.view==="history"?(ASK.hist===null?`<p class="muted">Loading…</p>`:(hist.length?`<ul class="ask-hist">${hist.map(L=>`<li><button data-askchat="${esc(L[0].chat)}"><b>${esc(L[0].q.slice(0,90))}</b><span class="muted">${fmtDT(L[L.length-1].at)} · ${L.length} ${L.length===1?"question":"questions"}</span></button></li>`).join("")}</ul>`:`<p class="muted">No questions asked yet.</p>`))
+    :(ASK.msgs.length?ASK.msgs.map(m=>m.role==="user"?`<div class="ask-m q">${esc(m.content)}</div>`:`<div class="ask-m a">${esc(m.content).replace(/\n/g,"<br>")}${m.basedOn?`<div class="ask-b">Based on: ${esc(m.basedOn)}</div>`:""}</div>`).join("")
+      :`<div class="ask-empty"><p>Ask about slots, end dates, holds, invoices, offers, the pipeline or partner results. Answers come from the portal data.</p><div class="ask-ex">${ASK_EX.map(q=>`<button data-askex="${esc(q)}">${esc(q)}</button>`).join("")}</div></div>`)
+      +(ASK.busy?`<div class="ask-m a busy">Looking through the portal…</div>`:"")+(ASK.err?`<div class="dl-msg bad">${esc(ASK.err)}</div>`:"");
+  w.innerHTML=`<aside class="ask-p" role="dialog" aria-label="Ask me anything"><div class="ask-h"><b>Ask me anything</b><span class="ask-hb">
+      <button class="btn small ghost" data-ask="new">New chat</button><button class="btn small ghost" data-ask="history" aria-pressed="${ASK.view==="history"}">History</button>
+      <button class="x" data-ask="close" aria-label="Close">×</button></span></div>
+    <div class="ask-body" id="ask-body">${body}</div>
+    ${ASK.view==="chat"?`<div class="ask-f"><textarea id="ask-q" rows="2" placeholder="Ask about the portal…" aria-label="Your question" ${ASK.busy?"disabled":""}>${esc(ASK.draft||"")}</textarea><button class="btn primary" data-ask="send" ${ASK.busy?"disabled":""}>Send</button></div>
+    <p class="note ask-n">Team only. It reads the portal and can't change anything. Answers can be wrong: the admin view is the record.</p>`:""}</aside>`;
+  const b=$("ask-body");if(b)b.scrollTop=b.scrollHeight;const q=$("ask-q");if(q&&!ASK.busy)q.focus()}
+async function askLoadHist(){const {data,error}=await sb.rpc("partners_team_ask_history",{p_session:SESSION});ASK.hist=error?[]:(data||[]);askRender()}
+function askClick(e){const t=e.target.closest("button");if(!t)return;
+  const a=t.dataset.ask;
+  if(a==="open"){ASK.open=true;if(!ASK.chat)ASK.chat=newChatId();askRender()}
+  else if(a==="close"){ASK.open=false;askRender()}
+  else if(a==="new"){ASK.chat=newChatId();ASK.msgs=[];ASK.err="";ASK.view="chat";ASK.draft="";askRender()}
+  else if(a==="history"){ASK.view=ASK.view==="history"?"chat":"history";if(ASK.view==="history"){ASK.hist=null;askLoadHist()}askRender()}
+  else if(a==="send")askSend();
+  else if(t.dataset.askex){ASK.draft=t.dataset.askex;askSend()}
+  else if(t.dataset.askchat){const id=t.dataset.askchat;ASK.chat=id;ASK.msgs=[];(ASK.hist||[]).filter(r=>r.chat===id).forEach(r=>{ASK.msgs.push({role:"user",content:r.q},{role:"assistant",content:r.a})});ASK.view="chat";ASK.err="";askRender()}}
+async function askSend(){const q=(ASK.draft||"").trim();if(!q||ASK.busy)return;
+  ASK.msgs.push({role:"user",content:q});ASK.draft="";ASK.busy=true;ASK.err="";askRender();
+  try{const r=await fetch(SB_URL+"/functions/v1/partners-ask",{method:"POST",headers:{"Content-Type":"application/json",apikey:SB_KEY},
+      body:JSON.stringify({session:SESSION,chat:ASK.chat,messages:ASK.msgs.map(m=>({role:m.role,content:m.content}))})});
+    const d=await r.json().catch(()=>({}));
+    if(d.answer){ASK.msgs.push({role:"assistant",content:d.answer,basedOn:d.basedOn});ASK.chat=d.chat||ASK.chat}
+    else{ASK.msgs.pop();ASK.draft=q;ASK.err=d.message||d.error||"Couldn't get an answer just now. Please try again in a minute."}}
+  catch(e){ASK.msgs.pop();ASK.draft=q;ASK.err="Couldn't reach the assistant. Check your connection and try again."}
+  ASK.busy=false;askRender()}
+
 // ---------- inbound partner requests (admin, right-hand column) ----------
 let INBOUND=[], IB=null, IBR={}, IBD={}; let MYREGIONS=null; let REVIEWS={}, REVIEW_DONE=false;
 // Our own test logins: never shown in partner activity, visits or "picked but not sent"
@@ -1263,7 +1534,7 @@ function rowDetail(a,t,g){
       ${a.mon?`<div class="mbar-wrap">${monBars(a)}<span class="muted" style="font-size:.74rem">Grey: views. Green: clicks to providers. Hover a month for numbers. The last bar is this month so far.</span></div>`:""}
       ${sh["1"]||sh["2"]?`<span class="eyebrow" style="margin-top:8px">On the page now <span class="muted" style="text-transform:none;letter-spacing:0">(${esc(shownLbl())})</span></span><div>1st ${esc(sh["1"]||"not recorded")} · 2nd ${esc(sh["2"]||"not recorded")}</div>`:""}
       ${fam?`<span class="eyebrow" style="margin-top:8px">Family</span><div>${esc(famNames(fam).join(" + "))}</div>`:""}
-    </div></div>`;
+    </div>${ROLE==="team"&&!PREVIEW?rowDeals(a):""}</div>`;
 }
 function teamMetaChip(a,g){const set=(S.setPrices||{})[a.name];if(set)return `<span class="tchip Premium">${esc(g)}</span> <span class="muted">custom price</span>`;
   return `<select class="gsel${manualTier(a)?" manual":""}" data-grp="${esc(a.name)}" aria-label="Group for ${esc(a.name)}"><option value="">Auto · ${esc(autoTier(a).name)}</option>${S.tiers.map(x=>`<option value="${esc(x.name)}" ${manualTier(a)&&manualTier(a).name===x.name?"selected":""}>${esc(x.name)} · set by hand</option>`).join("")}</select>`}
@@ -1369,7 +1640,7 @@ function railPanel(v){
     return `<section class="panel"><h3 style="margin-bottom:8px">At a glance</h3>
       ${g(openO,openO===1?"offer waiting":"offers waiting","","offers")}${g(ren,"slots in renewal","ended, held up to 60 days","renewal")}${g(soon,"slots ending","in the next 60 days","ending")}
       ${g(OPEN_NOW[1],"1st positions open","free to book now","open1")}${g(OPEN_NOW[2],"2nd positions open","free to book now","open2")}${g(wk,wk===1?"partner visit":"partner visits","this week","visits")}
-      <p class="note" style="margin-top:8px">To see exactly what a partner sees, pick them at the top and press Open their page.</p></section>`}
+      <p class="note" style="margin-top:8px">To see exactly what a partner sees, pick them at the top and press Open their page.</p></section>${checksPanel()}`}
   const T=totals();
   if(submitted) return `<section class="panel" id="selp"><h2>Your request</h2><div class="done"><b>Sent to Nomadwise${submitted.when?" on "+fmtD(new Date(submitted.when)):""}.</b><br>${submitted.items.length} ${submitted.items.length===1?"item":"items"}, package price ${eur(submitted.offer)}. We'll reply within 2 working days. You can send another once we've answered this one.</div>
     ${PREVIEW?`<p class="note">Preview only. Nothing was sent.</p><button class="btn small" id="reset">Reset preview</button>`:""}</section>`;
@@ -1667,6 +1938,7 @@ function bind(){
     if(!el.dataset.sure){el.dataset.sure="1";el.textContent="Sure? Remove";return}
     const {error}=await sb.rpc("partners_team_access",{p_session:SESSION,p_name:null,p_email:el.dataset.rmacc,p_provider:null,p_action:"remove"});
     if(error){toast(error.message);return}toast("Removed");reloadTeam()}));
+  if(ROLE==="team"&&!PREVIEW)mrBind();
 }
 
 $("mbar-b").addEventListener("click",()=>{const p=$("selp");if(p)p.scrollIntoView({behavior:"smooth"})});
