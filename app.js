@@ -1043,12 +1043,15 @@ let GEDIT=null, OPEN_NOW=[0,0,0]; const GEXP=new Set();
 // ---------- At a glance: tap a number to see what's behind it ----------
 let GLANCE=null;
 // ---------- partner pipeline (admin only): a simple manual CRM for provider requests ----------
-let PIPE=[], PF="All", PADD=false, PEDIT=null;
+let PIPE=[], PF="All", PADD=false, PEDIT=null, PSORT="new", PQ="";
 const PL_ST=["Open request","Discussion needed","In conversation","Waitlist","Active placement","Past placement","Declined"];
-const PL_SRC=["Email","LinkedIn","WhatsApp","Website form","Other"];
+const PL_SRC=["Email","Impact","LinkedIn","WhatsApp","Website form","Other"];
 const PL_TAG=["Inbound","Existing partner"];
 const plNeeds=()=>PIPE.filter(r=>r.status==="Open request"||r.status==="Discussion needed").length;
 const plOpts=(list,cur,blank)=>(blank?`<option value="">${blank}</option>`:"")+list.map(x=>`<option${x===cur?" selected":""}>${esc(x)}</option>`).join("");
+const isoDay=s=>/^\d{4}-\d{2}-\d{2}$/.test(String(s||""));
+const plRev=r=>{if(!r.revisit)return "";if(!isoDay(r.revisit))return `<span class="pl-rev">Revisit ${esc(r.revisit)}</span>`;
+  const due=r.revisit<=isoD(TODAY);return `<span class="pl-rev${due?" due":""}">${due?"Revisit due · ":"Revisit "}${plDate(r.revisit)}</span>`};
 const plDate=d=>{if(!d)return "";const t=new Date(String(d).length===10?d+"T12:00:00":d);return isNaN(t)?esc(d):fmtD(t)};
 function plForm(r,isNew){const v=k=>esc((r&&r[k])||"");const p=isNew?"pa":"pe";
   return `<form class="pl-form" id="${p}-form" data-plid="${isNew?"":esc(r.id)}">
@@ -1059,7 +1062,8 @@ function plForm(r,isNew){const v=k=>esc((r&&r[k])||"");const p=isNew?"pa":"pe";
       <label class="fl">Came in via<select id="${p}-source">${plOpts(PL_SRC,r&&r.source,"Choose")}</select></label>
       ${isNew?`<label class="fl">Status<select id="${p}-status">${plOpts(PL_ST,"Open request")}</select></label>`:""}
       <label class="fl">Tag<select id="${p}-tag">${plOpts(PL_TAG,(r&&r.tag)||"Inbound")}</select></label>
-      <label class="fl">Revisit<input id="${p}-revisit" value="${v("revisit")}" placeholder="e.g. Jan 2027 or 15 Dec"></label>
+      <label class="fl">Received<input id="${p}-received_date" type="date" max="${isoD(TODAY)}" value="${esc((r&&r.received_date)||isoD(TODAY))}" required></label>
+      <label class="fl">Revisit<input id="${p}-revisit" type="date" value="${r&&isoDay(r.revisit)?esc(r.revisit):""}">${r&&r.revisit&&!isoDay(r.revisit)?`<span class="muted" style="font-size:.78rem">Was: ${esc(r.revisit)}</span>`:""}</label>
     </div>
     <label class="fl">What they asked for<textarea id="${p}-summary" rows="3">${v("summary")}</textarea></label>
     <label class="fl">Our notes<textarea id="${p}-notes" rows="3" placeholder="Our own checks: coverage, prices, who they are">${v("notes")}</textarea></label>
@@ -1067,7 +1071,11 @@ function plForm(r,isNew){const v=k=>esc((r&&r[k])||"");const p=isNew?"pa":"pe";
 function pipelinePanel(){
   const cnt=s=>PIPE.filter(r=>r.status===s).length;
   const chips=[["All",PIPE.length]].concat(PL_ST.map(s=>[s,cnt(s)]));
-  const rows=PIPE.filter(r=>PF==="All"||r.status===PF);
+  const q=PQ.trim().toLowerCase();
+  const rows=PIPE.filter(r=>(PF==="All"||r.status===PF)&&(!q||[r.company,r.contact_name,r.email].some(x=>String(x||"").toLowerCase().includes(q))));
+  const newest=(a,b)=>String(b.received_date||"").localeCompare(String(a.received_date||""))||String(b.created_at||"").localeCompare(String(a.created_at||""));
+  const byName=(a,b)=>String(a.company||"").localeCompare(String(b.company||""),"en",{sensitivity:"base"});
+  rows.sort(PSORT==="name"?byName:PSORT==="status"?(a,b)=>(PL_ST.indexOf(a.status)-PL_ST.indexOf(b.status))||byName(a,b):newest);
   const card=r=>{const ed=PEDIT===r.id;
     return `<article class="pl-card${ed?" editing":""}"><div class="pl-row">
       <div class="pl-who"><span class="pl-tag${r.tag==="Existing partner"?" ex":""}">${esc(r.tag||"Inbound")}</span>
@@ -1077,30 +1085,35 @@ function pipelinePanel(){
       <div class="pl-txt"><span class="pl-l">They asked for</span><p>${r.summary?esc(r.summary):'<span class="muted">Nothing noted yet</span>'}</p>
         <span class="pl-l">Our notes</span><p>${r.notes?esc(r.notes):'<span class="muted">Nothing noted yet</span>'}</p></div>
       <div class="pl-side"><span class="pl-l">Status</span><select class="pl-s" data-s="${esc(r.status)}" data-plst="${esc(r.id)}" aria-label="Status for ${esc(r.company)}">${plOpts(PL_ST,r.status)}</select>
-        <button class="btn small" data-pledit="${esc(r.id)}">${ed?"Close":"Edit details"}</button>${r.revisit?`<span class="pl-rev">Revisit ${esc(r.revisit)}</span>`:""}</div></div>
+        <button class="btn small" data-pledit="${esc(r.id)}">${ed?"Close":"Edit details"}</button>${plRev(r)}</div></div>
       ${ed?plForm(r,false):""}</article>`};
   return `<section class="panel internal pl"><div class="phead"><div><h2>Partner pipeline<span class="tag-internal">Admin only</span></h2>
       <p class="note" style="margin:4px 0 0;max-width:640px">Everyone who has asked to work with us, in one place. Add requests by hand, keep your own notes, and move them forward when you decide. Nothing is sent from this page.</p></div>
       <button class="btn primary" id="pl-add">${PADD?"Close":"+ Add request"}</button></div>
     ${PADD?`<div class="pl-card editing">${plForm(null,true)}</div>`:""}
     <div class="pl-chips" role="group" aria-label="Filter by status">${chips.map(([s,n])=>`<button class="ichip${PF===s?" on":""}" data-plf="${esc(s)}" aria-pressed="${PF===s}">${esc(s)} <span class="pl-n">${n}</span></button>`).join("")}</div>
-    <div class="pl-list">${rows.map(card).join("")||`<p class="muted">${PIPE.length?"Nothing with this status.":"No requests yet. Press Add request to log the first one."}</p>`}</div></section>`}
+    <div class="pl-tools"><input type="search" id="pl-q" placeholder="Search a company, name or email" value="${esc(PQ)}" aria-label="Search the pipeline">
+      <label class="pl-sort">Sort by<select id="pl-sort" aria-label="Sort by">${[["new","Newest first"],["status","Status"],["name","Name A to Z"]].map(([k,l])=>`<option value="${k}"${PSORT===k?" selected":""}>${l}</option>`).join("")}</select></label></div>
+    <div class="pl-list">${rows.map(card).join("")||`<p class="muted">${PIPE.length?(q?"No request matches that search.":"Nothing with this status."):"No requests yet. Press Add request to log the first one."}</p>`}</div></section>`}
 async function plSave(id,row){const {data,error}=await sb.rpc("partners_team_pipeline",{p_session:SESSION,p_id:id||null,p_row:row});
   if(error){toast("Couldn't save: "+error.message);return null}
   const i=PIPE.findIndex(x=>x.id===data.id);if(i>=0)PIPE[i]=Object.assign({},PIPE[i],data);else PIPE.unshift(data);return data}
 function plBind(){
   if($("pl-add"))$("pl-add").addEventListener("click",()=>{PADD=!PADD;PEDIT=null;render();if(PADD&&$("pa-company"))$("pa-company").focus()});
   document.querySelectorAll("[data-plf]").forEach(el=>el.addEventListener("click",()=>{PF=el.dataset.plf;render()}));
+  const pq=$("pl-q");if(pq)pq.addEventListener("input",()=>{PQ=pq.value;const pos=pq.selectionStart;render();const n=$("pl-q");if(n){n.focus();n.setSelectionRange(pos,pos)}});
+  const ps=$("pl-sort");if(ps)ps.addEventListener("change",()=>{PSORT=ps.value;render()});
   document.querySelectorAll("[data-pledit]").forEach(el=>el.addEventListener("click",()=>{PEDIT=PEDIT===el.dataset.pledit?null:el.dataset.pledit;PADD=false;render();const f=$("pe-company");if(f)f.focus()}));
   document.querySelectorAll("[data-plcancel]").forEach(el=>el.addEventListener("click",()=>{if(el.dataset.plcancel==="add")PADD=false;else PEDIT=null;render()}));
   document.querySelectorAll("[data-plst]").forEach(el=>el.addEventListener("change",async()=>{const id=el.dataset.plst,r=PIPE.find(x=>x.id===id),prev=r.status;r.status=el.value;
     if(await plSave(id,{status:el.value})){toast(r.company+": "+el.value);render()}else{r.status=prev;render()}}));
   const read=(p,keys)=>{const o={};keys.forEach(k=>{const e=$(p+"-"+k);if(e)o[k]=e.value});return o};
-  const KEYS=["company","contact_name","email","source","tag","revisit","summary","notes"];
+  const KEYS=["company","contact_name","email","source","tag","received_date","revisit","summary","notes"];
   const fa=$("pa-form");if(fa)fa.addEventListener("submit",async e=>{e.preventDefault();const row=read("pa",KEYS.concat(["status"]));
     if(!row.company.trim()){toast("Add the company name");return}
     if(await plSave(null,row)){PADD=false;PF="All";toast("Added "+row.company.trim());render()}});
   const fe=$("pe-form");if(fe)fe.addEventListener("submit",async e=>{e.preventDefault();const row=read("pe",KEYS);
+    const old=PIPE.find(x=>x.id===fe.dataset.plid);if(old&&old.revisit&&!isoDay(old.revisit)&&!row.revisit)delete row.revisit;
     if(!row.company.trim()){toast("Add the company name");return}
     if(await plSave(fe.dataset.plid,row)){PEDIT=null;toast("Saved");render()}});
 }
