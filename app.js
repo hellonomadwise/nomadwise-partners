@@ -1043,7 +1043,7 @@ let GEDIT=null, OPEN_NOW=[0,0,0]; const GEXP=new Set();
 // ---------- At a glance: tap a number to see what's behind it ----------
 let GLANCE=null;
 // ---------- partner pipeline (admin only): a simple manual CRM for provider requests ----------
-let PIPE=[], PF="All", PADD=false, PEDIT=null, PSORT="new", PQ="";
+let PIPE=[], PF="All", PADD=false, PEDIT=null, PSORT="new", PQ="", PDEL=null;
 const PL_ST=["Open request","Discussion needed","In conversation","Waitlist","Active placement","Past placement","Declined"];
 const PL_SRC=["Email","Impact","LinkedIn","WhatsApp","Website form","Other"];
 const PL_TAG=["Inbound","Existing partner"];
@@ -1067,7 +1067,9 @@ function plForm(r,isNew){const v=k=>esc((r&&r[k])||"");const p=isNew?"pa":"pe";
     </div>
     <label class="fl">What they asked for<textarea id="${p}-summary" rows="3">${v("summary")}</textarea></label>
     <label class="fl">Our notes<textarea id="${p}-notes" rows="3" placeholder="Our own checks: coverage, prices, who they are">${v("notes")}</textarea></label>
-    <div class="acts"><button class="btn primary" type="submit">${isNew?"Save":"Save changes"}</button><button class="btn ghost" type="button" data-plcancel="${isNew?"add":"edit"}">Cancel</button></div></form>`}
+    <div class="acts"><button class="btn primary" type="submit">${isNew?"Save":"Save changes"}</button><button class="btn ghost" type="button" data-plcancel="${isNew?"add":"edit"}">Cancel</button>
+      ${isNew?"":PDEL===r.id?`<span class="pl-delq">Delete ${esc(r.company)} from the pipeline?</span><button class="btn danger" type="button" data-pldelyes="${esc(r.id)}">Yes, delete</button><button class="btn ghost" type="button" data-pldelno="1">Keep it</button>`
+        :`<button class="btn ghost pl-del" type="button" data-pldel="${esc(r.id)}">Delete request</button>`}</div></form>`}
 function pipelinePanel(){
   const cnt=s=>PIPE.filter(r=>r.status===s).length;
   const chips=[["All",PIPE.length]].concat(PL_ST.map(s=>[s,cnt(s)]));
@@ -1103,8 +1105,14 @@ function plBind(){
   document.querySelectorAll("[data-plf]").forEach(el=>el.addEventListener("click",()=>{PF=el.dataset.plf;render()}));
   const pq=$("pl-q");if(pq)pq.addEventListener("input",()=>{PQ=pq.value;const pos=pq.selectionStart;render();const n=$("pl-q");if(n){n.focus();n.setSelectionRange(pos,pos)}});
   const ps=$("pl-sort");if(ps)ps.addEventListener("change",()=>{PSORT=ps.value;render()});
-  document.querySelectorAll("[data-pledit]").forEach(el=>el.addEventListener("click",()=>{PEDIT=PEDIT===el.dataset.pledit?null:el.dataset.pledit;PADD=false;render();const f=$("pe-company");if(f)f.focus()}));
-  document.querySelectorAll("[data-plcancel]").forEach(el=>el.addEventListener("click",()=>{if(el.dataset.plcancel==="add")PADD=false;else PEDIT=null;render()}));
+  document.querySelectorAll("[data-pledit]").forEach(el=>el.addEventListener("click",()=>{PEDIT=PEDIT===el.dataset.pledit?null:el.dataset.pledit;PADD=false;PDEL=null;render();const f=$("pe-company");if(f)f.focus()}));
+  document.querySelectorAll("[data-plcancel]").forEach(el=>el.addEventListener("click",()=>{if(el.dataset.plcancel==="add")PADD=false;else{PEDIT=null;PDEL=null}render()}));
+  document.querySelectorAll("[data-pldel]").forEach(el=>el.addEventListener("click",()=>{PDEL=el.dataset.pldel;render()}));
+  document.querySelectorAll("[data-pldelno]").forEach(el=>el.addEventListener("click",()=>{PDEL=null;render()}));
+  document.querySelectorAll("[data-pldelyes]").forEach(el=>el.addEventListener("click",async()=>{const id=el.dataset.pldelyes;el.disabled=true;
+    const {data,error}=await sb.rpc("partners_team_pipeline_delete",{p_session:SESSION,p_id:id});
+    if(error){el.disabled=false;toast("Couldn't delete: "+error.message);return}
+    PIPE=PIPE.filter(x=>x.id!==id);PEDIT=null;PDEL=null;toast("Deleted "+((data&&data.company)||"the request"));render()}));
   document.querySelectorAll("[data-plst]").forEach(el=>el.addEventListener("change",async()=>{const id=el.dataset.plst,r=PIPE.find(x=>x.id===id),prev=r.status;r.status=el.value;
     if(await plSave(id,{status:el.value})){toast(r.company+": "+el.value);render()}else{r.status=prev;render()}}));
   const read=(p,keys)=>{const o={};keys.forEach(k=>{const e=$(p+"-"+k);if(e)o[k]=e.value});return o};
