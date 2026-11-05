@@ -400,13 +400,13 @@ function chipList(names){
 }
 // Admin tools as tabs (Jonathan, 5 Nov 2026): one row of tabs, one section showing at a time.
 // Anything that asks for a section with openD.add(id) switches to that tab.
-let MTAB=(()=>{try{return localStorage.getItem("nw_mtab")||"d-pb"}catch(e){return "d-pb"}})();
+let MTAB=null; // closed until a tab is clicked
 function moreTabs(list){
-  const asked=list.find(x=>openD.has(x[0]));if(asked){MTAB=asked[0];list.forEach(x=>openD.delete(x[0]))}
-  if(!list.some(x=>x[0]===MTAB))MTAB=list[0][0];
-  const cur=list.find(x=>x[0]===MTAB);
-  return `<section class="mtabs"><div class="mt-bar" role="tablist" aria-label="Admin tools">${list.map(([id,l,,b])=>`<button type="button" role="tab" class="mt-tab${id===MTAB?" on":""}" aria-selected="${id===MTAB}" aria-controls="${id}" data-mtab="${id}"${b?` title="${esc(b)}"`:""}>${esc(l)}${b?`<span class="mt-dot" aria-hidden="true"></span>`:""}</button>`).join("")}</div>
-    <div class="mt-panel fold-in" id="${cur[0]}" role="tabpanel">${cur[3]?`<p class="note" style="margin:0">${esc(cur[3])}</p>`:""}${cur[2]}</div></section>`}
+  const ids=x=>[x[0]].concat(x[4]||[]);
+  const asked=list.find(x=>ids(x).some(i=>openD.has(i)));if(asked){MTAB=asked[0];list.forEach(x=>ids(x).forEach(i=>openD.delete(i)))}
+  const cur=list.find(x=>x[0]===MTAB)||null;if(!cur)MTAB=null;
+  return `<section class="mtabs${cur?" open":""}"><div class="mt-bar" role="tablist" aria-label="Admin tools">${list.map(([id,l,,b])=>`<button type="button" role="tab" class="mt-tab${id===MTAB?" on":""}" aria-selected="${id===MTAB}" aria-expanded="${id===MTAB}" data-mtab="${id}"${b?` title="${esc(b)}"`:""}>${esc(l)}${b?`<span class="mt-dot" aria-hidden="true"></span>`:""}</button>`).join("")}</div>
+    ${cur?`<div class="mt-panel fold-in" id="${cur[0]}" role="tabpanel">${cur[3]?`<p class="note" style="margin:0">${esc(cur[3])}</p>`:""}${cur[2]}</div>`:""}</section>`}
 const fold=(id,title,inner)=>`<details class="fold" id="${id}" ${openD.has(id)?"open":""}><summary>${title}<span class="tag-internal">Admin only</span></summary><div class="fold-in">${inner}</div></details>`;
 const renewable=m=>m.st.fr||m.st.due||m.st.soon;
 const peOn=c=>c&&c.edit&&c.edit.on;
@@ -901,13 +901,12 @@ function teamPanels(){
     <p class="note">Contract deals are priced separately, so actual revenue on those slots differs from list.</p></section>`;
   const wk=ACT_EV.filter(e=>e.kind==="visit"&&new Date(e.at)>new Date(Date.now()-7*864e5)).length;
   return `<p class="note" style="margin-top:-8px">Offers and renewals need us. To record a deal, a renewal, a hold or an ending, tell Claude in chat. Everything else is in the tabs below.</p>`+inbox+ren+moreTabs([
-    ["d-pb","Proposal builder",pbPanel()],
-    ["d-act","Partner activity",activityPanel(),wk?wk+(wk===1?" visit":" visits")+" this week":""],
-    TEAM_EV.length?["d-team","Team activity",`<p class="note" style="margin:0">Only you see this.</p><section class="panel"><div class="queue">${teamActivityPanel()}</div></section>`]:null,
-    ["d-num","Inventory",kpi+cap],
-    ["d-pr","Prices and rules",prices],
     ["d-acc","Who has access",acc],
-    ["d-how","How it works",how]].filter(Boolean));
+    ["d-num","Inventory",kpi+cap],
+    ["d-act","Activity",`<h3 class="mt-h">Partner activity</h3>${activityPanel()}`+(TEAM_EV.length?`<h3 class="mt-h">Team activity <span class="muted" style="font-weight:500;font-size:.88rem">· only you see this</span></h3><section class="panel"><div class="queue">${teamActivityPanel()}</div></section>`:""),wk?wk+(wk===1?" partner visit":" partner visits")+" this week":"",["d-team"]],
+    ["d-pr","Prices and rules",prices],
+    ["d-how","How it works",how],
+    ["d-pb","Proposal builder",pbPanel()]]);
 }
 
 
@@ -1654,7 +1653,7 @@ function bind(){
   if(rva)rva.addEventListener("click",()=>{if(!submitted&&viewer()!==null){reviews=1;confirmOffer=null;track("review_change",{count:reviews});render()}});
   if(rm)rm.addEventListener("click",()=>{if(!submitted&&reviews>0){reviews--;confirmOffer=null;track("review_change",{count:reviews});render()}});
   if(rp)rp.addEventListener("click",()=>{if(!submitted&&viewer()!==null){reviews++;confirmOffer=null;track("review_change",{count:reviews});render()}});
-  document.querySelectorAll("[data-mtab]").forEach(el=>el.addEventListener("click",()=>{MTAB=el.dataset.mtab;try{localStorage.setItem("nw_mtab",MTAB)}catch(e){};render()}));
+  document.querySelectorAll("[data-mtab]").forEach(el=>el.addEventListener("click",()=>{MTAB=MTAB===el.dataset.mtab?null:el.dataset.mtab;render()}));
   document.querySelectorAll("details.qi,details.fold,details.pco,#d-done,details[id^='vis-']").forEach(d=>d.addEventListener("toggle",()=>{if(d.open)openD.add(d.id);else openD.delete(d.id)}));
   const lt=$("later");if(lt)lt.addEventListener("toggle",()=>{laterOpen=lt.open;if(lt.open)track("view_later_placements",{})});
   const ra=$("renall");if(ra)ra.addEventListener("click",()=>{

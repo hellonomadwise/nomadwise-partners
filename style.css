@@ -665,7 +665,9 @@ td .young{margin-left:4px;padding:0 5px;font-size:.68rem}
 
 /* Admin tools as tabs */
 .mtabs{border:1px solid var(--line);border-radius:12px;background:var(--surface)}
-.mt-bar{display:flex;flex-wrap:wrap;align-items:center;gap:2px;padding:6px;border-bottom:1px solid var(--line)}
+.mt-bar{display:flex;flex-wrap:wrap;align-items:center;gap:2px;padding:6px}
+.mtabs.open .mt-bar{border-bottom:1px solid var(--line)}
+.mt-h{margin:6px 4px 0;font-family:var(--f-display);font-size:1rem}
 .mt-tab{position:relative;flex:0 0 auto;min-height:44px;padding:8px 11px;border:0;border-radius:8px;background:none;color:var(--muted);font:inherit;font-weight:600;font-size:.9rem;white-space:nowrap;cursor:pointer}
 .mt-tab:hover{color:var(--ink);background:color-mix(in srgb,var(--line) 45%,transparent)}
 .mt-tab.on{background:var(--brand-soft);color:var(--brand-text)}
