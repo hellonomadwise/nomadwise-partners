@@ -1196,7 +1196,7 @@ function mrBind(){
 // ---------- Ask me anything (team only) ----------
 const ASK={open:false,view:"chat",chat:null,msgs:[],busy:false,hist:null,err:""};
 const newChatId=()=>(crypto.randomUUID?crypto.randomUUID():"xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx".replace(/x/g,()=>(Math.random()*16|0).toString(16)));
-const ASK_EX=["What's open in 1st in our Asia guides?","When does Holafly's 2nd on Japan end?","Which paid slots have no invoice?","Who is in renewal right now?","Jetpac renewed Laos 1st, invoice #42"];
+const ASK_EX=["What's open in 1st in our Asia guides?","When does Holafly's 2nd on Japan end?","Which paid slots have no invoice?","Who is in renewal right now?","Jetpac renewed Laos 1st, invoice #42","Jetpac stopped Laos 1st early"];
 // A deal or hold the assistant prepared: shown as a card, saved only when someone presses Confirm.
 const dIso=v=>v?fmtD(new Date(String(v).slice(0,10)+"T12:00:00")):"";
 function askCard(m,i){const p=m.prop,c=p.check||{},probs=c.problems||[],inp=p.input||{};
@@ -1205,6 +1205,11 @@ function askCard(m,i){const p=m.prop,c=p.check||{},probs=c.problems||[],inp=p.in
   if(p.kind==="deal"){head=`Record a deal: ${esc(inp.provider||c.provider||"")}`;
     rows=`<table class="ask-t"><thead><tr><th>Guide</th><th>From</th><th>To</th><th class="num">Price</th></tr></thead><tbody>${(c.items||[]).map(x=>`<tr><td>${esc(x.article)} ${x.pos===1?"1st":"2nd"}<div class="muted">now: ${esc(x.now||"open")}</div></td><td>${dIso(x.start)}</td><td>${dIso(x.end)}</td><td class="num">${eur(x.price)}${x.list&&Math.round(x.list)!==Math.round(x.price)?`<div class="muted">list ${eur(x.list)}</div>`:""}</td></tr>`).join("")}</tbody></table>
       <p class="ask-sum">${(c.items||[]).length} ${(c.items||[]).length===1?"guide":"guides"} · total ${eur(c.total||0)}${inp.invoice?` · invoice ${esc(inp.invoice)}`:" · no invoice yet"}</p>`}
+  else if(p.kind==="change"){const ds=c.deals||[],pvs=[...new Set(ds.map(x=>x.provider))].join(", ")||esc(inp.provider||"");
+    head={end:`End early: ${esc(pvs)}`,undo:`Undo a deal recorded by mistake: ${esc(pvs)}`,impact:`Mark as paid through Impact: ${esc(pvs)}`,invoice:`Add invoice ${esc(c.invoice||inp.invoice||"")}: ${esc(pvs)}`}[c.action||inp.action]||"Change a deal";
+    const aft=c.action==="end"||c.action==="undo";
+    rows=ds.length?`<table class="ask-t"><thead><tr><th>Guide</th><th>Deal</th>${aft?"<th>After</th>":""}</tr></thead><tbody>${ds.map(x=>`<tr><td>${esc(x.article)} ${x.pos===1?"1st":"2nd"}${x.family?`<div class="muted">goes with the country</div>`:""}</td><td>${dIso(x.start)} to ${dIso(x.end)}<div class="muted">${x.price!=null?eur(x.price)+" · ":""}${x.invoice?"invoice "+esc(x.invoice):x.paid_via==="impact"?"paid through Impact":"no invoice"}</div></td>${aft?`<td>${esc(x.after||"")}</td>`:""}</tr>`).join("")}</tbody></table>
+      <p class="ask-sum">${ds.length} ${ds.length===1?"deal":"deals"}${c.reason?` · ${esc(c.reason)}`:""}${c.action==="end"?" · the slot shows as open to every partner straight away":c.action==="undo"?" · as if it was never recorded":""}</p>`:""}
   else if(p.kind==="release"){head=`Release the hold on ${esc(inp.article||"")} ${inp.pos===1?"1st":"2nd"}`}
   else{head=`Hold ${esc(inp.article||"")} ${inp.pos===1?"1st":"2nd"} for ${esc(inp.provider||"")}`;
     rows=`<p class="ask-sum">Until ${dIso(c.until||inp.until)}${(c.guides||[]).length>1?` · together with ${esc((c.guides||[]).filter(g=>g!==inp.article).join(", "))}`:""}${inp.note?` · ${esc(inp.note)}`:""}</p>`}
@@ -1215,6 +1220,7 @@ function askCard(m,i){const p=m.prop,c=p.check||{},probs=c.problems||[],inp=p.in
 async function askConfirm(i){const m=ASK.msgs[i];if(!m||!m.prop||m.state||m.busy)return;m.busy=true;m.err="";
   const p=m.prop;let r;
   if(p.kind==="deal")r=await sb.rpc("partners_team_deal",{p_session:SESSION,p_deal:p.input});
+  else if(p.kind==="change"){const c=p.check||{};r=await sb.rpc("partners_team_deal_change",{p_session:SESSION,p_action:c.action,p_ids:(c.deals||[]).map(x=>x.id),p_invoice:c.invoice||null,p_reason:c.reason||null})}
   else r=await sb.rpc("partners_team_hold",{p_session:SESSION,p_id:null,p_row:p.input});
   m.busy=false;const d=r.data||{};
   if(r.error||d.ok===false){m.err="Couldn't save: "+((r.error&&r.error.message)||(d.problems||[]).join("; ")||"please try again");askRender();return}
@@ -1230,14 +1236,14 @@ function askRender(){const w=$("askw");if(!w)return;
   const hist=Object.values(chats).sort((a,b)=>String(b[b.length-1].at).localeCompare(String(a[a.length-1].at)));
   const body=ASK.view==="history"?(ASK.hist===null?`<p class="muted">Loading…</p>`:(hist.length?`<ul class="ask-hist">${hist.map(L=>`<li><button data-askchat="${esc(L[0].chat)}"><b>${esc(L[0].q.slice(0,90))}</b><span class="muted">${fmtDT(L[L.length-1].at)} · ${L.length} ${L.length===1?"question":"questions"}</span></button></li>`).join("")}</ul>`:`<p class="muted">No questions asked yet.</p>`))
     :(ASK.msgs.length?ASK.msgs.map(m=>m.role==="user"?`<div class="ask-m q">${esc(m.content)}</div>`:`<div class="ask-m a">${esc(m.content).replace(/\n/g,"<br>")}${m.prop?askCard(m,ASK.msgs.indexOf(m)):""}${m.basedOn?`<div class="ask-b">Based on: ${esc(m.basedOn)}</div>`:""}</div>`).join("")
-      :`<div class="ask-empty"><p>Ask about slots, end dates, holds, invoices, offers, the pipeline or partner results. Or tell it a deal that was agreed, and it prepares it for you to confirm.</p><div class="ask-ex">${ASK_EX.map(q=>`<button data-askex="${esc(q)}">${esc(q)}</button>`).join("")}</div></div>`)
+      :`<div class="ask-empty"><p>Ask about slots, end dates, holds, invoices, offers, the pipeline or partner results. Or tell it what changed (a new deal, a renewal, a hold, a deal that ended early or was a mistake, an invoice number, or paid through Impact), and it prepares it for you to confirm.</p><div class="ask-ex">${ASK_EX.map(q=>`<button data-askex="${esc(q)}">${esc(q)}</button>`).join("")}</div></div>`)
       +(ASK.busy?`<div class="ask-m a busy">Looking through the portal…</div>`:"")+(ASK.err?`<div class="dl-msg bad">${esc(ASK.err)}</div>`:"");
   w.innerHTML=`<aside class="ask-p" role="dialog" aria-label="Ask me anything"><div class="ask-h"><b>Ask me anything</b><span class="ask-hb">
       <button class="btn small ghost" data-ask="new">New chat</button><button class="btn small ghost" data-ask="history" aria-pressed="${ASK.view==="history"}">History</button>
       <button class="x" data-ask="close" aria-label="Close">×</button></span></div>
     <div class="ask-body" id="ask-body">${body}</div>
     ${ASK.view==="chat"?`<div class="ask-f"><textarea id="ask-q" rows="2" placeholder="Ask about the portal…" aria-label="Your question" ${ASK.busy?"disabled":""}>${esc(ASK.draft||"")}</textarea><button class="btn primary" data-ask="send" ${ASK.busy?"disabled":""}>Send</button></div>
-    <p class="note ask-n">Team only. Ask about the portal, or tell it a deal or hold to record. Nothing is saved until you press Confirm. Answers can be wrong: the admin view is the record.</p>`:""}</aside>`;
+    <p class="note ask-n">Team only. Ask about the portal, or tell it a deal, hold, ending or invoice to record. Nothing is saved until you press Confirm. Answers can be wrong: the admin view is the record.</p>`:""}</aside>`;
   const b=$("ask-body");if(b)b.scrollTop=b.scrollHeight;const q=$("ask-q");if(q&&!ASK.busy)q.focus()}
 async function askLoadHist(){const {data,error}=await sb.rpc("partners_team_ask_history",{p_session:SESSION});ASK.hist=error?[]:(data||[]);askRender()}
 function askClick(e){const t=e.target.closest("button");if(!t)return;
