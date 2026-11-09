@@ -675,3 +675,18 @@ td .young{margin-left:4px;padding:0 5px;font-size:.68rem}
 .mt-dot{display:inline-block;width:7px;height:7px;margin-left:6px;border-radius:50%;background:var(--brand);vertical-align:2px}
 .mt-adm{margin-left:auto;flex:0 0 auto}
 .mt-panel{min-height:120px}
+
+/* Ask me anything: a prepared deal or hold, saved only on Confirm */
+.ask-card{margin-top:10px;padding:10px 12px;border:1px solid var(--brand);border-radius:8px;background:var(--surface)}
+.ask-card.saved{border-color:var(--line)}
+.ask-card.cancelled{opacity:.7;border-color:var(--line)}
+.ask-t{width:100%;border-collapse:collapse;margin:8px 0 4px;font-size:.84rem}
+.ask-t th{text-align:left;font-size:.72rem;color:var(--muted);font-weight:600;padding:4px 6px 4px 0;border-bottom:1px solid var(--line)}
+.ask-t td{padding:6px 6px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.ask-t .num{text-align:right}
+.ask-t .muted{font-size:.74rem}
+.ask-sum{margin:6px 0 0;font-size:.84rem}
+.ask-probs{margin:8px 0 4px;padding-left:18px;color:var(--coral);font-size:.84rem}
+.ask-cb{display:flex;gap:8px;margin-top:10px}
+.ask-cb .btn{min-height:44px}
+.ask-ok{margin:8px 0 0;color:var(--accent);font-weight:600;font-size:.86rem}
