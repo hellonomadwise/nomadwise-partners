@@ -686,6 +686,7 @@ td .young{margin-left:4px;padding:0 5px;font-size:.68rem}
 .ask-t .num{text-align:right}
 .ask-t .muted{font-size:.74rem}
 .ask-sum{margin:6px 0 0;font-size:.84rem}
+.ask-note{margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--bg,#f6f7f9);font-size:.86rem;white-space:normal}
 .ask-probs{margin:8px 0 4px;padding-left:18px;color:var(--coral);font-size:.84rem}
 .ask-cb{display:flex;gap:8px;margin-top:10px}
 .ask-cb .btn{min-height:44px}
